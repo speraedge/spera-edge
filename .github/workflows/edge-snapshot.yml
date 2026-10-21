@@ -35,10 +35,27 @@ jobs:
         run: |
           git config user.name "spera-edge-bot"
           git config user.email "spera-edge-bot@users.noreply.github.com"
+          # Keep the freshly generated snapshot while rebasing onto concurrent code changes.
+          # Never force-push or overwrite unrelated commits.
           git add data/latest
           if ! git diff --cached --quiet; then
             git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
-            git push origin HEAD:main
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              if git rebase origin/main; then
+                if git push origin HEAD:main; then
+                  exit 0
+                fi
+              else
+                git rebase --abort || true
+                echo "Snapshot conflicts with concurrent main changes; refusing unsafe overwrite."
+                exit 1
+              fi
+              echo "Concurrent update during push; retrying ($attempt/5)"
+              sleep $((attempt * 2))
+            done
+            echo "Could not publish snapshot after five safe attempts."
+            exit 1
           fi
       - name: Archive published research evidence
         if: always()
