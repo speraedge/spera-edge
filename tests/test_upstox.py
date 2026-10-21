@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 from edge_core.upstox import fetch_daily_candles, UpstoxDataError
 
 class Response:
@@ -27,8 +28,9 @@ class UpstoxTests(unittest.TestCase):
         self.assertIn("NSE_EQ%7CINE002A01018", session.url)
         self.assertEqual(session.headers["Authorization"], "Bearer test")
     def test_missing_token(self):
-        with self.assertRaises(UpstoxDataError):
-            fetch_daily_candles("NSE_EQ|test", "2026-10-01", "2026-10-20", token="")
+        with patch.dict("os.environ", {"UPSTOX_ACCESS_TOKEN": ""}):
+            with self.assertRaises(UpstoxDataError):
+                fetch_daily_candles("NSE_EQ|test", "2026-10-01", "2026-10-20", token="")
 
 if __name__ == "__main__":
     unittest.main()
