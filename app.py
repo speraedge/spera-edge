@@ -13,6 +13,10 @@ from datetime import date
 from pathlib import Path
 import json
 import hashlib
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from edge_core.snapshot_integrity import validate_snapshot
+from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -26,15 +30,19 @@ def snapshot_table(name):
     return pd.read_csv(path,index_col="Date",parse_dates=["Date"]).sort_index() if name in ("close","high","low","volume") else pd.read_csv(path)
 
 try:
+    validate_snapshot(SNAPSHOT_DIR)
     edge_meta=json.loads((SNAPSHOT_DIR/"metadata.json").read_text())
     if edge_meta.get("universe")!="NIFTY_500" or edge_meta.get("certified") is not False or not (495 <= int(edge_meta.get("expected",0)) <= 505) or int(edge_meta.get("mapped",0))<495:
         raise ValueError("Unexpected snapshot contract")
-except (OSError,ValueError,TypeError):
+except (OSError,ValueError,TypeError,KeyError):
     edge_meta=None
+snapshot_usable=False
 if edge_meta:
     try:
         last_session=pd.Timestamp(edge_meta["last_session"]).date()
-        age=(date.today()-last_session).days
+        now_ist=datetime.now(ZoneInfo("Asia/Kolkata"))
+        age=(now_ist.date()-last_session).days
+        snapshot_usable=0 <= age <= 5 and (age > 0 or now_ist.hour >= 16)
         if age>5 or age<0:
             st.error(f"Snapshot is stale or dated in the future ({age} calendar days). Do not trade from these results.")
     except (ValueError,TypeError,KeyError):
@@ -49,6 +57,8 @@ with tabs[0]:
     prices = snapshot_table("close") if edge_meta else None
 
     if prices is not None:
+        render_market(prices)
+        render_industries(SNAPSHOT_DIR,prices)
         stats = market_breadth(prices)
         st.metric("Symbols provided", stats["coverage"])
         a,b=st.columns(2)
@@ -109,6 +119,7 @@ with tabs[1]:
                     & levels["Data_Quality"].isin(["REVIEW","PASS"])
                 )
                 levels["SEPA_Certified"]=False
+                levels=leadership_evidence(levels,close_for_levels,SNAPSHOT_DIR)
                 st.caption("Technical confluence = price template + NIFTY 500 price-strength percentile. It excludes earnings, verified benchmark RS and current sector certification.")
                 st.subheader("Leadership qualification funnel")
                 a1,a2,a3=st.columns(3)
@@ -121,7 +132,13 @@ with tabs[1]:
                 st.caption("SEPA and actionable setup qualification pending independent relative strength, sector and source checks.")
                 st.dataframe(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50),use_container_width=True)
                 st.metric("Trusted PASS stocks", int(scored["Data_Quality"].eq("PASS").sum()))
-                st.dataframe(scored.sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
+                st.subheader("Trusted PASS research")
+                st.dataframe(scored[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
+                st.subheader("Provisional REVIEW research")
+                st.dataframe(scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
+                st.subheader("Excluded FAIL records")
+                st.dataframe(scored[scored["Data_Quality"].eq("FAIL")], use_container_width=True)
+                st.download_button("Download qualification evidence",levels.to_csv(index=False),"edge_qualification_evidence.csv","text/csv")
                 st.warning("Research ranks are provisional unless independently certified. REVIEW is not PASS.")
                 st.download_button("Download ranked research CSV", scored.to_csv(index=False), "edge_ranked_research.csv", "text/csv")
                 st.caption("Imported data is not independently certified. REVIEW/FAIL are not in the trusted list.")
@@ -212,6 +229,10 @@ with tabs[2]:
             st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
+                if snapshot_usable:
+                    render_entries(close,high,low,volume,edge_meta["last_session"])
+                else:
+                    st.error("Entry planning disabled: snapshot is stale, future-dated or not from a completed session.")
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=compute_setup_scanner(close,volume,high_df=high,low_df=low)
@@ -221,41 +242,5 @@ with tabs[2]:
                 st.error(str(exc))
 with tabs[3]:
     st.subheader("Portfolio & Journal")
-    st.caption("Position planning and session-only journal. Export entries to retain them.")
-    capital=st.number_input("Capital (INR)",min_value=1.0,value=500000.0)
-    risk_pct=st.number_input("Risk per trade (%)",min_value=0.1,max_value=5.0,value=1.0)
-    committed_risk=st.number_input("Existing open-position risk (INR)",min_value=0.0,value=0.0)
-    entry=st.number_input("Entry",min_value=0.01,value=100.0)
-    stop=st.number_input("Stop",min_value=0.01,value=95.0)
-    try:
-        budget=risk_budget(capital,risk_pct,committed_risk)
-        sizing=position_size(capital,risk_pct,entry,stop)
-        sizing["quantity"]=min(sizing["quantity"],int(budget["new_trade_budget"]//sizing["risk_per_share"]))
-        sizing["planned_risk"]=sizing["quantity"]*sizing["risk_per_share"]
-        sizing["notional"]=sizing["quantity"]*entry
-        st.metric("Remaining portfolio risk capacity (INR)",round(budget["available_risk"],2))
-        st.metric("Risk-based quantity",sizing["quantity"])
-        st.metric("Planned stop loss (INR)",round(sizing["planned_risk"],2))
-        if sizing["notional"]>capital:
-            st.warning("Notional exposure exceeds capital.")
-    except ValueError as exc:
-        st.error(str(exc))
-    if "journal_rows" not in st.session_state:
-        st.session_state["journal_rows"]=[]
-    with st.form("journal"):
-        symbol=st.text_input("Symbol").strip().upper()
-        side=st.selectbox("Side",["LONG","SHORT"])
-        qty=st.number_input("Quantity",min_value=1,value=1,step=1)
-        note=st.text_area("Journal note")
-        if st.form_submit_button("Add to session journal"):
-            try:
-                st.session_state["journal_rows"].append(journal_entry(symbol,side,entry,stop,int(qty),note))
-                st.success("Added to session. Export to save.")
-            except ValueError as exc:
-                st.error(str(exc))
-    if st.session_state["journal_rows"]:
-        journal=pd.DataFrame(st.session_state["journal_rows"])
-        st.dataframe(journal,use_container_width=True)
-        st.download_button("Export journal CSV",journal.to_csv(index=False),"spera_edge_journal.csv","text/csv")
-        st.warning("Session only: persistent cloud storage not configured.")
+    render_private_portfolio(prices,snapshot_usable)
 st.caption("SPERA EDGE is not investment advice. No automatic execution, certified signals or return guarantees.")
