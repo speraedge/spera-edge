@@ -1,0 +1,24 @@
+name: Verify EDGE persistence and release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python -m compileall -q app.py edge_workspace.py edge_evidence.py edge_core tests tools
+      - run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
+      - name: Verify isolated EDGE D1 write read and owner isolation
+        env:
+          EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
+          EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
+          EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
+        run: python -m edge_workspace verify-d1
