@@ -198,7 +198,7 @@ def setup_scanner_coverage(close_df: pd.DataFrame,
     if symbols is None:
         columns = list(close_df.columns)
     else:
-        columns = [f"{s}.NS" if not str(s).endswith(".NS") else str(s) for s in symbols]
+        columns = [str(s) if str(s) in close_df.columns else f"{s}.NS" for s in symbols]
         columns = [col for col in columns if col in close_df.columns]
 
     frames = (volume_df, high_df, low_df)
@@ -250,7 +250,7 @@ def compute_setup_scanner(close_df: pd.DataFrame,
     if symbols is None:
         columns = list(close_df.columns)
     else:
-        columns = [f"{s}.NS" if not s.endswith(".NS") else s for s in symbols]
+        columns = [str(s) if str(s) in close_df.columns else f"{s}.NS" for s in symbols]
         columns = [c for c in columns if c in close_df.columns]
 
     rows = []
