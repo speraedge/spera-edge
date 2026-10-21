@@ -1,10 +1,10 @@
-"""Safe one-time EDGE D1 schema initializer; no original SPERA database access."""
+"""Initialize only the separate EDGE D1 database; statements are idempotent."""
 from pathlib import Path
 from edge_core.d1_store import d1_query
 
 def initialize(path="db/schema.sql"):
     sql=Path(path).read_text()
-    statements=[s.strip() for s in sql.split(";") if s.strip() and not s.strip().startswith("-- SPERA SOURCE")]
+    statements=[s.strip() for s in sql.split(";") if s.strip()]
     for statement in statements:
         d1_query(statement)
     return len(statements)
