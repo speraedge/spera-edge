@@ -6,6 +6,7 @@ from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
 from edge_core.portfolio import position_size, journal_entry
 from edge_core.portfolio_risk import risk_budget
+from edge_core.leadership_levels import classify_leadership
 from datetime import date
 from pathlib import Path
 import json
@@ -72,6 +73,16 @@ with tabs[1]:
                 frame["Ret_12M"]=pd.to_numeric(frame["Ret_12M"],errors="coerce")
                 frame["AnnVol"]=pd.to_numeric(frame["AnnVol"],errors="coerce")
                 scored=apply_frozen_v1_scores(frame)
+                # Research levels remain provisional until RS, sector and source gates are verified.
+                close_for_levels=snapshot_table("close") if edge_meta else None
+                levels=classify_leadership(scored,close_for_levels)
+                st.subheader("Leadership qualification funnel")
+                a1,a2,a3=st.columns(3)
+                a1.metric("Momentum leaders (trusted)",int(levels["Momentum_Leader"].sum()))
+                a2.metric("Price template passed",int((levels["Momentum_Leader"] & levels["Price_Template_Pass"]).sum()))
+                a3.metric("Certified SEPA / setup-ready",0)
+                st.caption("SEPA and actionable setup qualification pending independent relative strength, sector and source checks.")
+                st.dataframe(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50),use_container_width=True)
                 st.metric("Trusted PASS stocks", int(scored["Data_Quality"].eq("PASS").sum()))
                 st.dataframe(scored.sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
                 st.warning("Research ranks are provisional unless independently certified. REVIEW is not PASS.")
