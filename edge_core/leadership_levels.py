@@ -33,6 +33,8 @@ def classify_leadership(ranks, close, setups=None, min_percentile=80):
     out["Research_Level"] = "UNQUALIFIED"
     out.loc[out["Provisional_Momentum_Candidate"], "Research_Level"] = "PROVISIONAL_MOMENTUM"
     out.loc[out["Momentum_Leader"], "Research_Level"] = "MOMENTUM_LEADER"
+    out.loc[out["Provisional_Momentum_Candidate"] & out["Price_Template_Pass"], "Research_Level"] = "PROVISIONAL_PRICE_TEMPLATE_PASS"
     out.loc[out["Momentum_Leader"] & out["Price_Template_Pass"], "Research_Level"] = "PRICE_TEMPLATE_PASS"
+    out.loc[out["Provisional_Momentum_Candidate"] & out["Price_Template_Pass"] & out["Setup_Diagnostic"], "Research_Level"] = "PROVISIONAL_SETUP_REVIEW"
     out.loc[out["Momentum_Leader"] & out["Price_Template_Pass"] & out["Setup_Diagnostic"], "Research_Level"] = "SETUP_REVIEW"
     return out
