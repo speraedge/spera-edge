@@ -22,3 +22,7 @@ The same Upstox developer application may be reused. Never commit keys, secrets,
 
 ## Isolation
 Use separate storage and deployment resources from the existing SPERA project. Any inherited ranking module must be reviewed against its frozen contract before import.
+
+## Upstox verification
+
+GitHub Actions reads either `UPSTOX_ACCESS_TOKEN` or `UPSTOX_ANALYTIC_TOKEN` (an actual OAuth access token, not API key/secret). To check live access, open Actions > Upstox read-only smoke > Run workflow. The workflow requests RELIANCE historical candles and never prints credentials. Tokens can expire and need reauthorization. CI and deployment are separate; no Streamlit deployment has been performed.
