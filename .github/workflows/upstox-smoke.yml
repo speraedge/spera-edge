@@ -1,22 +1,35 @@
 name: Upstox read-only smoke
 on:
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - name: Verify token is configured without exposing it
+      - name: Verify Upstox access with one historical candle request
         env:
-          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
         run: |
           python - <<'PY'
           import os
+          from datetime import date, timedelta
+          from edge_core.upstox import fetch_daily_candles
           if not os.getenv("UPSTOX_ACCESS_TOKEN"):
-              raise SystemExit("Missing UPSTOX_ACCESS_TOKEN secret; no API call attempted.")
-          print("Upstox access token is configured. No API call or secret disclosure.")
+              raise SystemExit("No token found under UPSTOX_ACCESS_TOKEN or UPSTOX_ANALYTIC_TOKEN.")
+          end = date.today()
+          start = end - timedelta(days=14)
+          try:
+              frame = fetch_daily_candles("NSE_EQ|INE002A01018", start.isoformat(), end.isoformat())
+          except Exception:
+              raise SystemExit("Upstox authentication or history retrieval failed; token may be expired.")
+          if frame.empty:
+              raise SystemExit("Upstox returned no candles for the smoke-test instrument.")
+          print(f"Upstox historical read succeeded: {len(frame)} daily candles (RELIANCE).")
           PY
