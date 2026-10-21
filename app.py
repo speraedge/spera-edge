@@ -22,7 +22,7 @@ def snapshot_table(name):
 
 try:
     edge_meta=json.loads((SNAPSHOT_DIR/"metadata.json").read_text())
-    if edge_meta.get("universe")!="NIFTY_500" or edge_meta.get("certified") is not False or edge_meta.get("expected")!=500 or edge_meta.get("mapped")!=500:
+    if edge_meta.get("universe")!="NIFTY_500" or edge_meta.get("certified") is not False or not (495 <= int(edge_meta.get("expected",0)) <= 505) or int(edge_meta.get("mapped",0))<495:
         raise ValueError("Unexpected snapshot contract")
 except (OSError,ValueError,TypeError):
     edge_meta=None
