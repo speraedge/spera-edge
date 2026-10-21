@@ -8,6 +8,7 @@ from edge_core.portfolio import position_size, journal_entry
 from datetime import date
 from pathlib import Path
 import json
+import hashlib
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -90,7 +91,12 @@ with tabs[1]:
             selected_week=st.selectbox("Historical weekly snapshot",weeks,key="edge_history_week")
             record=next(row for row in history_weeks if row["weekly_key"]==selected_week)
             history_path=Path(__file__).parent/"data"/"history"/record["file"]
+            digest=hashlib.sha256(history_path.read_bytes()).hexdigest()
+            if digest!=record.get("sha256"):
+                raise ValueError("Historical file checksum mismatch")
             historical=pd.read_csv(history_path)
+            if len(historical)!=int(record["rows"]):
+                raise ValueError("Historical file row count mismatch")
             st.caption(f"Historical snapshot: {selected_week} | {len(historical)} rows | Source: SPERA Wisdom trusted weekly snapshot. Not current trading signals.")
             if "Pure_Momentum_Rank" in historical.columns:
                 historical=historical.sort_values("Pure_Momentum_Rank",na_position="last")
