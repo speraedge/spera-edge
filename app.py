@@ -138,6 +138,23 @@ with tabs[1]:
             if len(historical)!=int(record["rows"]):
                 raise ValueError("Historical file row count mismatch")
             st.caption(f"Historical snapshot: {selected_week} | {len(historical)} rows | Source: SPERA Wisdom trusted weekly snapshot. Not current trading signals.")
+            sector_path=history_path.parent/f"nifty500_{selected_week}_sectors.csv"
+            cohort_path=history_path.parent/f"nifty500_{selected_week}_cohorts.csv"
+            if sector_path.is_file() and cohort_path.is_file():
+                archived_sectors=pd.read_csv(sector_path)
+                archived_cohorts=pd.read_csv(cohort_path)
+                if (len(archived_sectors)==int(record["sector_rows"])
+                    and len(archived_cohorts)==int(record["cohort_rows"])
+                    and archived_sectors["weekly_key"].eq(selected_week).all()
+                    and archived_cohorts["week_key"].eq(selected_week).all()
+                    and not archived_sectors["sector"].duplicated().any()
+                    and not archived_cohorts["ticker"].duplicated().any()):
+                    st.subheader("Archived sector leadership")
+                    st.caption("Historical SPERA Wisdom sector rankings only; not a current EDGE sector signal.")
+                    st.dataframe(archived_sectors.sort_values("sector_rank"),use_container_width=True)
+                else:
+                    st.warning("Archived sector evidence failed identity or date validation.")
+
             if "Pure_Momentum_Rank" in historical.columns:
                 historical=historical.sort_values("Pure_Momentum_Rank",na_position="last")
             st.dataframe(historical.head(50),use_container_width=True)
