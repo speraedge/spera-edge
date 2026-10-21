@@ -1,0 +1,44 @@
+name: Import trusted SPERA Wisdom NIFTY 500 history
+on:
+  workflow_dispatch:
+    inputs:
+      weeks:
+        description: "Latest trusted weeks to import (1–13)"
+        required: true
+        default: '7'
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Read verified original D1 snapshots (SELECT only)
+        env:
+          SPERA_SOURCE_CF_ACCOUNT_ID: ${{ secrets.SPERA_SOURCE_CF_ACCOUNT_ID }}
+          SPERA_SOURCE_D1_DATABASE_ID: ${{ secrets.SPERA_SOURCE_D1_DATABASE_ID }}
+          SPERA_SOURCE_CF_READ_TOKEN: ${{ secrets.SPERA_SOURCE_CF_READ_TOKEN }}
+          REQUESTED_WEEKS: ${{ inputs.weeks }}
+        run: |
+          python - <<'PY'
+          import os
+          from tools.import_spera_history import import_history
+          count=int(os.environ["REQUESTED_WEEKS"])
+          if not 1 <= count <= 13:
+              raise ValueError("weeks must be between 1 and 13")
+          import_history(weeks=count)
+          PY
+      - name: Commit history only to independent EDGE repository
+        run: |
+          git config user.name "spera-edge-bot"
+          git config user.email "spera-edge-bot@users.noreply.github.com"
+          git add data/history
+          if ! git diff --cached --quiet; then
+            git commit -m "data: import verified SPERA NIFTY 500 history [skip ci]"
+            git push origin HEAD:main
+          fi
