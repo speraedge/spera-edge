@@ -1,34 +1,30 @@
 # SPERA EDGE
 
-Private, independent momentum research and trade-planning application built with Streamlit.
+Independent NIFTY 500 research and trade-planning application. The original SPERA Wisdom project is not modified. No brokerage orders are implemented.
 
-## Screens
-- Market Pulse: market regime and breadth (requires verified market history)
-- Leadership Scanner: momentum candidates and trend-template screening
-- Trade Desk: VCP research candidates requiring manual chart validation
-- Portfolio & Journal: manual trade planning and journal entries
+## Four tabs
 
-## Status
-Initial application scaffold. No live feed, brokerage execution, certified signals, persistence, or scheduled jobs are enabled. The source SPERA project is not modified.
+- Market Pulse: dated breadth, advances/declines, expansion/deterioration, conservative participation heuristics and official current-industry research.
+- Leadership Scanner: frozen Momentum V1, price-only Stage 2 template, universe-relative strength, institutional 12-1/path diagnostics and explicit evidence gates. PASS, REVIEW and FAIL remain separate.
+- Trade Desk: VCP research, prior-session pivot and volume confirmation, protective-stop reference, risk/exposure-capped sizing, selected watchlists and CSV exports. Technical confirmation is not a certified SEPA signal.
+- Portfolio & Journal: authenticated, owner-scoped, append-only D1 ledger for long entries, partial exits, stops, fees, review notes, realized/unrealized P&L, exposure and risk.
 
-## Local start
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+## Data and limitations
 
-## Credentials
-The same Upstox developer application may be reused. Never commit keys, secrets, or tokens. Configure `UPSTOX_API_KEY`, `UPSTOX_API_SECRET`, and a valid `UPSTOX_ACCESS_TOKEN` only in a secure secret store when the API adapter is activated. Tokens expire; unattended renewal is not assumed.
+GitHub Actions refreshes the existing independent Upstox OHLCV snapshot and EDGE D1 research storage. Current NSE industry membership is separately dated and checksum-verified. Historical SPERA Wisdom sector rankings remain archived evidence. Benchmark history is looked up by identity in the provider master; missing benchmark data stays unavailable. Corporate-action adjustment and independently verified earnings/sales evidence remain required before certification. No automatic PASS upgrades are performed. Historical breadth uses the available current universe and has survivorship limitations. VCP range rules and market-condition thresholds are explicitly labeled research heuristics.
 
-## Isolation
-Use separate storage and deployment resources from the existing SPERA project. Any inherited ranking module must be reviewed against its frozen contract before import.
+## Private journal configuration
 
-## Upstox verification
+The private tab is locked before database reads unless Streamlit OIDC and an explicit EDGE_JOURNAL_ALLOWED_EMAILS list are configured. Follow Streamlit official OIDC authentication documentation. Configure [auth] with redirect_uri, cookie_secret, client_id, client_secret and server_metadata_url. The identity provider must supply verified email, email_verified=true, issuer (iss) and subject (sub). Streamlit sharing access alone is not journal authentication.
 
-GitHub Actions reads either `UPSTOX_ACCESS_TOKEN` or `UPSTOX_ANALYTIC_TOKEN` (an actual OAuth access token, not API key/secret). To check live access, open Actions > Upstox read-only smoke > Run workflow. The workflow requests RELIANCE historical candles and never prints credentials. Tokens can expire and need reauthorization. CI and deployment are separate; no Streamlit deployment has been performed.
+Set EDGE_CF_ACCOUNT_ID, EDGE_D1_DATABASE_ID and EDGE_CF_API_TOKEN in Streamlit secrets for the independent EDGE database only. GitHub repository secrets do not automatically become Streamlit secrets. The ledger uses parameterized owner-scoped queries, atomic revision checks and idempotent submission IDs. Legacy unscoped edge_journal records are not exposed or automatically migrated. Never commit credentials.
 
-## Streamlit Community Cloud release
+Accounting uses average cost including transaction fees. Stops do not guarantee fills. Missing/stale marks disable new-entry sizing; breached recorded stops block new entries. Positions are long-only. Manually entered account equity must be verified independently.
 
-Deploy the private GitHub repository `speraedge/spera-edge`, branch `main`, main file `app.py`. Add `UPSTOX_ACCESS_TOKEN` to **Streamlit app secrets**; GitHub Actions secrets are not automatically available to Streamlit. The token must be a current OAuth access token. The app's sidebar can fetch one instrument's historical daily candles for a read-only connection check. It does not populate a certified universe-wide live leaderboard automatically.
+## Verification
 
-Production limitations: no persistent journal database, no validated universe membership or corporate-action adjustment, no automated weekly live refresh, and no broker orders. Session journal must be exported before closing the app. Review GitHub Actions quality checks and live Streamlit logs before relying on results.
+Run python -m unittest discover -s tests -v and python -m compileall -q app.py edge_workspace.py edge_evidence.py edge_core tests tools. The frozen V1 source hash and ranking regressions are checked.
+
+Run Actions > Verify EDGE persistence and release to verify independent D1 write/read, owner isolation and published research counts. This retains an explicitly labeled synthetic technical NOTE under a unique probe owner, never as an actual trade. Authenticated production-user journal verification additionally requires the private configuration above.
+
+Production deploys main/app.py through Streamlit Community Cloud. Verify all four deployed tabs and downloads separately from CI.
