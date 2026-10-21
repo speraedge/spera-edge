@@ -27,6 +27,10 @@ jobs:
         run: python -m tools.publish_edge_snapshot
       - name: Validate complete snapshot files and metadata
         run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
+      - name: Publish dated current official membership and benchmark research
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
+        run: python -m edge_evidence
       - name: Publish validated leadership research to EDGE D1
         env:
           EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
