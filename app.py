@@ -102,6 +102,14 @@ with tabs[1]:
                     ).ge(80)
                 else:
                     levels["RS_80th_Percentile_Diagnostic"]=False
+                # This is a price-only research confluence, not SEPA certification.
+                levels["SEPA_Technical_Research"]=(
+                    levels["Price_Template_Pass"]
+                    & levels["RS_80th_Percentile_Diagnostic"]
+                    & levels["Data_Quality"].isin(["REVIEW","PASS"])
+                )
+                levels["SEPA_Certified"]=False
+                st.caption("Technical confluence = price template + NIFTY 500 price-strength percentile. It excludes earnings, verified benchmark RS and current sector certification.")
                 st.subheader("Leadership qualification funnel")
                 a1,a2,a3=st.columns(3)
                 a1.metric("Momentum leaders (trusted)",int(levels["Momentum_Leader"].sum()))
