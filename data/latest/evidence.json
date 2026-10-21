@@ -1,0 +1,11 @@
+{
+  "fetched_utc": "2026-10-21T21:44:51.025650+00:00",
+  "membership_source": "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv",
+  "membership_sha256": "d299f103bfabeedaf6886725a658f63a860ce7f97c1bea52406de0eb41121e1b",
+  "membership_rows": 501,
+  "benchmark_status": "PROVIDER_HISTORY",
+  "benchmark_name": "NIFTY 500",
+  "benchmark_instrument": "NSE_INDEX|Nifty 500",
+  "benchmark_identity_source": "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz",
+  "benchmark_sha256": "2304182353cc3cacc16bdf4ed993ace8e72dc6a7ff95db089cbd740acb200735"
+}
