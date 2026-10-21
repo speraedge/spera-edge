@@ -12,6 +12,8 @@ def position_size(capital, risk_pct, entry, stop):
     capital, risk_pct, entry, stop = map(float, vals)
     if capital <= 0 or not 0 < risk_pct <= 5 or entry <= 0 or stop <= 0 or entry == stop:
         raise ValueError("Enter positive capital/prices, distinct entry and stop, and risk 0-5%.")
+    if stop >= entry:
+        raise ValueError("Long position stop must be below entry.")
     risk_rupees = capital * risk_pct / 100
     per_share = abs(entry-stop)
     qty = min(math.floor(risk_rupees/per_share), math.floor(capital/entry))
