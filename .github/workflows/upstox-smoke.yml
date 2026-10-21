@@ -1,0 +1,22 @@
+name: Upstox read-only smoke
+on:
+  workflow_dispatch:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Verify token is configured without exposing it
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os
+          if not os.getenv("UPSTOX_ACCESS_TOKEN"):
+              raise SystemExit("Missing UPSTOX_ACCESS_TOKEN secret; no API call attempted.")
+          print("Upstox access token is configured. No API call or secret disclosure.")
+          PY
