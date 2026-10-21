@@ -9,10 +9,30 @@ from edge_core.portfolio import position_size, journal_entry
 from edge_core.upstox import fetch_daily_candles, UpstoxDataError
 from datetime import date, timedelta
 import os
+from pathlib import Path
+import json
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
-st.caption("Independent research • Offline data-import mode • No brokerage execution")
+st.caption("Independent NIFTY 500 research • Automatic snapshots when available • No brokerage execution")
+
+SNAPSHOT_DIR=Path(__file__).parent/"data"/"latest"
+def snapshot_table(name):
+    path=SNAPSHOT_DIR/f"{name}.csv"
+    if not path.is_file():
+        return None
+    return pd.read_csv(path,index_col="Date",parse_dates=["Date"]).sort_index() if name in ("close","high","low","volume") else pd.read_csv(path)
+
+try:
+    edge_meta=json.loads((SNAPSHOT_DIR/"metadata.json").read_text())
+    if edge_meta.get("universe")!="NIFTY_500" or edge_meta.get("certified") is not False or edge_meta.get("expected")!=500 or edge_meta.get("mapped")!=500:
+        raise ValueError("Unexpected snapshot contract")
+except (OSError,ValueError,TypeError):
+    edge_meta=None
+if edge_meta:
+    st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
+else:
+    st.warning("No automated NIFTY 500 snapshot published yet. Historical import is available under diagnostics.")
 
 def load_prices(upload):
     if upload is None:
@@ -37,7 +57,7 @@ def upload_frame(label, key):
         return None
 
 with st.sidebar:
-    st.subheader("Upstox historical data")
+    st.subheader("Diagnostics: manual Upstox fetch")
     instrument=st.text_input("Upstox instrument key", "NSE_EQ|INE002A01018")
     if st.button("Fetch 450-day history"):
         token=os.getenv("UPSTOX_ACCESS_TOKEN") or os.getenv("UPSTOX_ANALYTIC_TOKEN")
@@ -61,8 +81,10 @@ with st.sidebar:
 tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal"])
 with tabs[0]:
     st.subheader("Market Pulse")
-    st.caption("Upload coherent daily close prices (Date, SYMBOL.NS columns). No live data is assumed.")
-    prices = upload_frame("Daily close history CSV", "breadth")
+    prices = snapshot_table("close") if edge_meta else None
+    if prices is None:
+        with st.expander("Diagnostics: import daily close history"):
+            prices = upload_frame("Daily close history CSV", "breadth")
     if prices is not None:
         stats = market_breadth(prices)
         st.metric("Symbols provided", stats["coverage"])
@@ -74,11 +96,14 @@ with tabs[0]:
         st.info("No validated market history connected.")
 with tabs[1]:
     st.subheader("Leadership Scanner")
-    st.caption("Import one coherent universe cross-section with Data_Quality, Ret_6M, Ret_12M, AnnVol. Returns must be decimal fractions.")
-    ranks = st.file_uploader("Momentum cross-section CSV", type=["csv"], key="ranks")
-    if ranks:
+    st.caption("Automatically published research ranks are not certified trading signals.")
+    ranks = snapshot_table("leadership") if edge_meta else None
+    if ranks is None:
+        with st.expander("Diagnostics: import research cross-section"):
+            ranks = st.file_uploader("Momentum cross-section CSV", type=["csv"], key="ranks")
+    if ranks is not None:
         try:
-            frame = pd.read_csv(ranks)
+            frame = ranks if isinstance(ranks,pd.DataFrame) else pd.read_csv(ranks)
             required={"Data_Quality","Ret_6M","Ret_12M","AnnVol"}
             if not required.issubset(frame.columns):
                 st.error("Missing columns: " + ", ".join(sorted(required-set(frame.columns))))
@@ -89,15 +114,18 @@ with tabs[1]:
                 frame["Ret_12M"]=pd.to_numeric(frame["Ret_12M"],errors="coerce")
                 frame["AnnVol"]=pd.to_numeric(frame["AnnVol"],errors="coerce")
                 scored=apply_frozen_v1_scores(frame)
-                trusted=scored.loc[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50)
                 st.metric("Trusted PASS stocks", int(scored["Data_Quality"].eq("PASS").sum()))
-                st.dataframe(trusted, use_container_width=True)
+                st.dataframe(scored.sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
+                st.warning("Research ranks are provisional unless independently certified. REVIEW is not PASS.")
                 st.download_button("Download ranked research CSV", scored.to_csv(index=False), "edge_ranked_research.csv", "text/csv")
                 st.caption("Imported data is not independently certified. REVIEW/FAIL are not in the trusted list.")
         except Exception as exc:
             st.error(f"Unable to score input: {exc}")
     st.divider()
-    stage_close=upload_frame("Optional close history for price-only Stage 2 checks", "stage2")
+    stage_close=prices if edge_meta and prices is not None else None
+    if stage_close is None:
+        with st.expander("Diagnostics: Stage 2 close history"):
+            stage_close=upload_frame("Optional close history for price-only Stage 2 checks", "stage2")
     if stage_close is not None and not stage_close.empty:
         records=[]
         for sym in stage_close:
@@ -108,12 +136,17 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("Trade Desk")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
-    with st.expander("Import aligned daily OHLCV histories", expanded=True):
+    with st.expander("Aligned daily OHLCV histories (automatic snapshot or diagnostic import)", expanded=True):
         st.caption("Four CSVs: Date plus identical SYMBOL.NS columns; minimum 253 aligned sessions.")
-        close=upload_frame("Close CSV","close")
-        high=upload_frame("High CSV","high")
-        low=upload_frame("Low CSV","low")
-        volume=upload_frame("Volume CSV","volume")
+        close=snapshot_table("close") if edge_meta else None
+        high=snapshot_table("high") if edge_meta else None
+        low=snapshot_table("low") if edge_meta else None
+        volume=snapshot_table("volume") if edge_meta else None
+        if not edge_meta:
+            close=upload_frame("Close CSV","close")
+            high=upload_frame("High CSV","high")
+            low=upload_frame("Low CSV","low")
+            volume=upload_frame("Volume CSV","volume")
         if all(x is not None for x in (close,high,low,volume)):
             try:
                 coverage=setup_scanner_coverage(close,volume,high,low)
