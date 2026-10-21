@@ -28,6 +28,10 @@ def classify_leadership(ranks, close, setups=None, min_percentile=80):
     if setups is not None and not setups.empty and "Ticker" in setups:
         setup_symbols = set(setups["Ticker"].dropna().astype(str))
     out["Setup_Diagnostic"] = out["Symbol"].isin(setup_symbols)
+    # Technical diagnostics only: a cross-sectional percentile is not a verified
+    # benchmark RS series, and no audited earnings/source evidence is available.
+    out["SEPA_Technical_Research"] = False
+    out["SEPA_Certified"] = False
     out["SEPA_Status"] = "PENDING_RS_SECTOR_AND_SOURCE_VERIFICATION"
     out["Setup_Status"] = "NOT_CERTIFIED"
     out["Research_Level"] = "UNQUALIFIED"
