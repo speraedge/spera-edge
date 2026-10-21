@@ -30,6 +30,13 @@ try:
 except (OSError,ValueError,TypeError):
     edge_meta=None
 if edge_meta:
+    try:
+        last_session=pd.Timestamp(edge_meta["last_session"]).date()
+        age=(date.today()-last_session).days
+        if age>5 or age<0:
+            st.error(f"Snapshot is stale or dated in the future ({age} calendar days). Do not trade from these results.")
+    except (ValueError,TypeError,KeyError):
+        st.error("Snapshot session date invalid; research outputs are not certified.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
     st.warning("No automated NIFTY 500 snapshot published yet. Historical import is available under diagnostics.")
