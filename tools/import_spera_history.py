@@ -69,7 +69,7 @@ def import_history(outdir="data/history",weeks=7,reader=query):
         pd.DataFrame(sectors).to_csv(target/f"nifty500_{key}_sectors.csv",index=False)
         pd.DataFrame(cohorts).to_csv(target/f"nifty500_{key}_cohorts.csv",index=False)
         manifest.append({"weekly_key":key,"file":filename,"rows":len(frame),
-                         "source":"SPERA Wisdom D1 trusted weekly history","historical_only":True})
+                         "source":"SPERA Wisdom D1 trusted weekly history","historical_only":True,"source_commit":row["commit_id"],"sha256":hashlib.sha256((target/filename).read_bytes()).hexdigest(),"sector_rows":len(sectors),"cohort_rows":len(cohorts)})
     if not manifest:
         raise RuntimeError("No source snapshots passed independent trust checks")
     (target/"manifest.json").write_text(json.dumps({"universe":"NIFTY_500","weeks":manifest},indent=2))
