@@ -129,6 +129,29 @@ with tabs[1]:
         except Exception as exc:
             st.error(f"Unable to score input: {exc}")
     st.divider()
+    st.subheader("SPERA Wisdom historical leadership (read-only import)")
+    history_manifest=Path(__file__).parent/"data"/"history"/"manifest.json"
+    if history_manifest.is_file():
+        try:
+            history_info=json.loads(history_manifest.read_text())
+            history_weeks=history_info.get("weeks",[])
+            if history_info.get("universe")!="NIFTY_500" or not history_weeks:
+                raise ValueError("Unexpected history manifest")
+            weeks=[row["weekly_key"] for row in history_weeks]
+            selected_week=st.selectbox("Historical weekly snapshot",weeks,key="edge_history_week")
+            record=next(row for row in history_weeks if row["weekly_key"]==selected_week)
+            history_path=Path(__file__).parent/"data"/"history"/record["file"]
+            historical=pd.read_csv(history_path)
+            st.caption(f"Historical snapshot: {selected_week} | {len(historical)} rows | Source: SPERA Wisdom trusted weekly snapshot. Not current trading signals.")
+            if "Pure_Momentum_Rank" in historical.columns:
+                historical=historical.sort_values("Pure_Momentum_Rank",na_position="last")
+            st.dataframe(historical.head(50),use_container_width=True)
+            st.download_button("Download selected historical week",historical.to_csv(index=False),f"edge_history_{selected_week}.csv","text/csv")
+        except (OSError,ValueError,KeyError,pd.errors.ParserError) as exc:
+            st.error(f"Historical snapshot unavailable: {exc}")
+    else:
+        st.info("No SPERA Wisdom historical snapshots imported yet; source D1 read access is required.")
+    st.divider()
     stage_close=prices if edge_meta and prices is not None else None
     if stage_close is None:
         with st.expander("Diagnostics: Stage 2 close history"):
