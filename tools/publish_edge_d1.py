@@ -37,7 +37,7 @@ def publish(path="data/latest", query=d1_query):
     existing=query("SELECT run_id, rows_count FROM edge_snapshot_runs WHERE run_id=?", (run_id,))
     if existing and int(existing[0]["rows_count"])==len(df):
         count=query("SELECT COUNT(*) AS n FROM edge_leadership WHERE run_id=?", (run_id,))
-        if count and int(count[0]["n"])==500:
+        if count and int(count[0]["n"])==len(df):
             return {"run_id":run_id,"rows":len(df),"already_published":True}
     # Parent first, then child rows. Retry-safe upserts and final count verification.
     query("""INSERT INTO edge_snapshot_runs
@@ -55,7 +55,7 @@ def publish(path="data/latest", query=d1_query):
     result=query("SELECT COUNT(*) AS n FROM edge_leadership WHERE run_id=?", (run_id,))
     if not result or int(result[0]["n"])!=len(df):
         raise RuntimeError("D1 EDGE leadership row verification failed")
-    return {"run_id":run_id,"rows":500,"already_published":False}
+    return {"run_id":run_id,"rows":len(df),"already_published":False}
 
 if __name__=="__main__":
     print(json.dumps(publish(),indent=2))
