@@ -8,6 +8,7 @@ from edge_core.portfolio import position_size, journal_entry
 from edge_core.portfolio_risk import risk_budget
 from edge_core.leadership_levels import classify_leadership
 from edge_core.relative_strength import cross_sectional_rs
+from edge_core.current_sectors import current_sector_research
 from datetime import date
 from pathlib import Path
 import json
@@ -149,6 +150,16 @@ with tabs[1]:
                     and archived_cohorts["week_key"].eq(selected_week).all()
                     and not archived_sectors["sector"].duplicated().any()
                     and not archived_cohorts["ticker"].duplicated().any()):
+                    current_prices=snapshot_table("close") if edge_meta else None
+                    if current_prices is not None:
+                        try:
+                            sector_now=current_sector_research(current_prices,archived_cohorts,selected_week)
+                            st.subheader("Current price-based sector momentum")
+                            st.caption("Live price returns grouped using archived sector membership from "+selected_week+". PROVISIONAL; mapping is incomplete and not a current certified sector index.")
+                            st.dataframe(sector_now,use_container_width=True)
+                            st.download_button("Download provisional current sector research",sector_now.to_csv(index=False),"edge_current_sector_research.csv","text/csv")
+                        except ValueError as sector_error:
+                            st.warning(f"Current sector research unavailable: {sector_error}")
                     st.subheader("Archived sector leadership")
                     st.caption("Historical SPERA Wisdom sector rankings only; not a current EDGE sector signal.")
                     st.dataframe(archived_sectors.sort_values("sector_rank"),use_container_width=True)
