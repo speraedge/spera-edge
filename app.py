@@ -5,6 +5,7 @@ from edge_core.analytics import stage2_template, market_breadth
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
 from edge_core.portfolio import position_size, journal_entry
+from edge_core.portfolio_risk import risk_budget
 from datetime import date
 from pathlib import Path
 import json
@@ -141,10 +142,16 @@ with tabs[3]:
     st.caption("Position planning and session-only journal. Export entries to retain them.")
     capital=st.number_input("Capital (INR)",min_value=1.0,value=500000.0)
     risk_pct=st.number_input("Risk per trade (%)",min_value=0.1,max_value=5.0,value=1.0)
+    committed_risk=st.number_input("Existing open-position risk (INR)",min_value=0.0,value=0.0)
     entry=st.number_input("Entry",min_value=0.01,value=100.0)
     stop=st.number_input("Stop",min_value=0.01,value=95.0)
     try:
+        budget=risk_budget(capital,risk_pct,committed_risk)
         sizing=position_size(capital,risk_pct,entry,stop)
+        sizing["quantity"]=min(sizing["quantity"],int(budget["new_trade_budget"]//sizing["risk_per_share"]))
+        sizing["planned_risk"]=sizing["quantity"]*sizing["risk_per_share"]
+        sizing["notional"]=sizing["quantity"]*entry
+        st.metric("Remaining portfolio risk capacity (INR)",round(budget["available_risk"],2))
         st.metric("Risk-based quantity",sizing["quantity"])
         st.metric("Planned stop loss (INR)",round(sizing["planned_risk"],2))
         if sizing["notional"]>capital:
