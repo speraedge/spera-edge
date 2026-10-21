@@ -83,7 +83,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         "research_pass":int(research["Data_Quality"].eq("PASS").sum()),
         "research_review":int(research["Data_Quality"].eq("REVIEW").sum()),
         "research_fail":int(research["Data_Quality"].eq("FAIL").sum()),
-        "last_session":str(close.index.max().date()),
+        "last_session":str(close.index.max()),
         "generated_utc":datetime.now(timezone.utc).isoformat(),
         "source":"Upstox historical candles + official NSE constituent identities",
         "quality":"REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
