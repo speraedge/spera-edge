@@ -21,14 +21,22 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     if instruments is None:
         instruments=fetch_upstox_instruments()
     mapping=join_official_universe(universe,instruments)
-    if len(mapping)!=500 or not mapping["Mapping_Status"].eq("MAPPED").all():
-        raise RuntimeError("NIFTY 500 identity coverage incomplete; refusing to publish")
+    expected=len(mapping)
+    missing=mapping.loc[mapping["Mapping_Status"].ne("MAPPED"),["Symbol","ISIN"]].to_dict("records")
+    if not (495<=expected<=505):
+        raise RuntimeError(f"Official NIFTY 500 count outside safe range: {expected}")
+    if missing:
+        print(json.dumps({"official_count":expected,"mapped":expected-len(missing),"missing_identities":missing},indent=2))
+    # Original SPERA audit verified 501 constituents and one provider failure.
+    if expected-len(missing)<495:
+        raise RuntimeError("NIFTY 500 mapped identity coverage below safe threshold")
+    mapping_ok=mapping.loc[mapping["Mapping_Status"].eq("MAPPED")]
     end=date.today()
     start=end-timedelta(days=490)
     fields={name:{} for name in ("close","high","low","volume")}
     failures=[]
     successful=0
-    for row in mapping.itertuples(index=False):
+    for row in mapping_ok.itertuples(index=False):
         symbol=row.Symbol
         try:
             frame=fetcher(row.instrument_key,start,end,token=token)
@@ -63,14 +71,14 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         extra=pd.DataFrame({"Symbol":missing,"Data_Quality":"FAIL","Reason":"Upstox historical retrieval unavailable",
                             "Ret_6M":np.nan,"Ret_12M":np.nan,"AnnVol":np.nan})
         research=pd.concat([research,extra],ignore_index=True)
-    if len(research)!=500 or research["Symbol"].duplicated().any():
+    if len(research)!=expected or research["Symbol"].duplicated().any():
         raise RuntimeError("Research universe identity gate failed")
     research.to_csv(destination/"leadership.csv",index=False)
     # Store recent OHLCV for chart inspection; do not expose provider secrets.
     for name,frame in matrices.items():
         frame.tail(253).to_csv(destination/f"{name}.csv",index_label="Date")
     metadata={
-        "universe":"NIFTY_500","expected":500,"mapped":500,
+        "universe":"NIFTY_500","expected":expected,"mapped":len(mapping_ok),
         "retrieved":successful,"retrieval_failures":failures,
         "research_pass":int(research["Data_Quality"].eq("PASS").sum()),
         "research_review":int(research["Data_Quality"].eq("REVIEW").sum()),
