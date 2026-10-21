@@ -1,4 +1,4 @@
-name: Official universe identity audit
+name: NIFTY 500 identity audit
 on:
   workflow_dispatch:
   schedule:
@@ -15,12 +15,12 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - name: Validate NSE universes against Upstox instrument master
+      - name: Validate NIFTY 500 against Upstox instrument master
         run: python -m tools.build_universe_mapping
       - name: Upload independent research identity audit
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: edge-universe-identity-audit
+          name: edge-nifty500-identity-audit
           path: snapshot/
           retention-days: 14
