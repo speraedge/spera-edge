@@ -52,8 +52,8 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     if len(close)<253:
         raise RuntimeError("Insufficient market calendar history; refusing publication")
     research,breadth=derive_research(close,volume)
-    if len(research)!=500:
-        raise RuntimeError("Research universe coverage gate failed")
+    if len(research)!=successful:
+        raise RuntimeError("Research retrieved-universe coverage gate failed")
     destination=Path(outdir)
     destination.mkdir(parents=True,exist_ok=True)
     # Preserve the official universe even when a provider symbol is missing.
