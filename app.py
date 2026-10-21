@@ -1,14 +1,11 @@
 """SPERA EDGE: private, read-only research interface. No brokerage orders."""
-import io
 import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
 from edge_core.portfolio import position_size, journal_entry
-from edge_core.upstox import fetch_daily_candles, UpstoxDataError
-from datetime import date, timedelta
-import os
+from datetime import date
 from pathlib import Path
 import json
 
@@ -39,59 +36,13 @@ if edge_meta:
         st.error("Snapshot session date invalid; research outputs are not certified.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
-    st.warning("No automated NIFTY 500 snapshot published yet. Historical import is available under diagnostics.")
-
-def load_prices(upload):
-    if upload is None:
-        return None
-    raw = pd.read_csv(io.BytesIO(upload.getvalue()))
-    if "Date" not in raw.columns:
-        raise ValueError("Price CSV must include Date and one or more symbol columns.")
-    dates = pd.to_datetime(raw.pop("Date"), errors="coerce")
-    if dates.isna().any() or dates.duplicated().any():
-        raise ValueError("Dates must be valid and unique.")
-    raw.index = dates
-    return raw.apply(pd.to_numeric, errors="coerce").sort_index()
-
-def upload_frame(label, key):
-    obj = st.file_uploader(label, type=["csv"], key=key)
-    if obj is None:
-        return None
-    try:
-        return load_prices(obj)
-    except (ValueError, pd.errors.ParserError) as exc:
-        st.error(str(exc))
-        return None
-
-with st.sidebar:
-    st.subheader("Diagnostics: manual Upstox fetch")
-    instrument=st.text_input("Upstox instrument key", "NSE_EQ|INE002A01018")
-    if st.button("Fetch 450-day history"):
-        token=os.getenv("UPSTOX_ACCESS_TOKEN") or os.getenv("UPSTOX_ANALYTIC_TOKEN")
-        if not token:
-            try:
-                token=st.secrets.get("UPSTOX_ACCESS_TOKEN") or st.secrets.get("UPSTOX_ANALYTIC_TOKEN")
-            except (FileNotFoundError, KeyError):
-                token=None
-        try:
-            if not token:
-                raise UpstoxDataError("Access token not configured in app hosting secrets.")
-            frame=fetch_daily_candles(instrument,date.today()-timedelta(days=450),date.today(),token=token)
-            st.session_state["upstox_frame"]=frame
-        except (UpstoxDataError, ValueError) as exc:
-            st.error(str(exc))
-    if "upstox_frame" in st.session_state:
-        frame=st.session_state["upstox_frame"]
-        st.caption(f"{len(frame)} daily candles (unverified)")
-        st.download_button("Export OHLCV",frame.to_csv(index_label="Date"),"upstox_history.csv","text/csv")
+    st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
 
 tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal"])
 with tabs[0]:
     st.subheader("Market Pulse")
     prices = snapshot_table("close") if edge_meta else None
-    if prices is None:
-        with st.expander("Diagnostics: import daily close history"):
-            prices = upload_frame("Daily close history CSV", "breadth")
+
     if prices is not None:
         stats = market_breadth(prices)
         st.metric("Symbols provided", stats["coverage"])
@@ -105,9 +56,7 @@ with tabs[1]:
     st.subheader("Leadership Scanner")
     st.caption("Automatically published research ranks are not certified trading signals.")
     ranks = snapshot_table("leadership") if edge_meta else None
-    if ranks is None:
-        with st.expander("Diagnostics: import research cross-section"):
-            ranks = st.file_uploader("Momentum cross-section CSV", type=["csv"], key="ranks")
+
     if ranks is not None:
         try:
             frame = ranks if isinstance(ranks,pd.DataFrame) else pd.read_csv(ranks)
@@ -153,9 +102,7 @@ with tabs[1]:
         st.info("No SPERA Wisdom historical snapshots imported yet; source D1 read access is required.")
     st.divider()
     stage_close=prices if edge_meta and prices is not None else None
-    if stage_close is None:
-        with st.expander("Diagnostics: Stage 2 close history"):
-            stage_close=upload_frame("Optional close history for price-only Stage 2 checks", "stage2")
+
     if stage_close is not None and not stage_close.empty:
         records=[]
         for sym in stage_close:
@@ -166,17 +113,14 @@ with tabs[1]:
 with tabs[2]:
     st.subheader("Trade Desk")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
-    with st.expander("Aligned daily OHLCV histories (automatic snapshot or diagnostic import)", expanded=True):
-        st.caption("Four CSVs: Date plus identical SYMBOL.NS columns; minimum 253 aligned sessions.")
+    with st.container():
+        st.caption("Automatic daily OHLCV snapshot; minimum 253 aligned sessions.")
         close=snapshot_table("close") if edge_meta else None
         high=snapshot_table("high") if edge_meta else None
         low=snapshot_table("low") if edge_meta else None
         volume=snapshot_table("volume") if edge_meta else None
         if not edge_meta:
-            close=upload_frame("Close CSV","close")
-            high=upload_frame("High CSV","high")
-            low=upload_frame("Low CSV","low")
-            volume=upload_frame("Volume CSV","volume")
+            st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
                 coverage=setup_scanner_coverage(close,volume,high,low)
