@@ -7,6 +7,7 @@ import argparse
 import base64
 import gzip
 import json
+import hashlib
 import os
 from pathlib import Path
 import pandas as pd
@@ -63,6 +64,10 @@ def import_history(outdir="data/history",weeks=7,reader=query):
             continue
         filename=f"nifty500_{key}.csv"
         frame.to_csv(target/filename,index=False)
+        sectors=reader("SELECT * FROM weekly_sector_summary WHERE weekly_key=? ORDER BY sector_rank,sector",(key,))
+        cohorts=reader("SELECT * FROM cohort_dimensions WHERE week_key=? ORDER BY ticker",(key,))
+        pd.DataFrame(sectors).to_csv(target/f"nifty500_{key}_sectors.csv",index=False)
+        pd.DataFrame(cohorts).to_csv(target/f"nifty500_{key}_cohorts.csv",index=False)
         manifest.append({"weekly_key":key,"file":filename,"rows":len(frame),
                          "source":"SPERA Wisdom D1 trusted weekly history","historical_only":True})
     if not manifest:
