@@ -152,6 +152,13 @@ with tabs[1]:
                     st.subheader("Archived sector leadership")
                     st.caption("Historical SPERA Wisdom sector rankings only; not a current EDGE sector signal.")
                     st.dataframe(archived_sectors.sort_values("sector_rank"),use_container_width=True)
+                    st.download_button(
+                        "Download archived sector rankings",
+                        archived_sectors.sort_values("sector_rank").to_csv(index=False),
+                        f"edge_archived_sectors_{selected_week}.csv","text/csv"
+                    )
+                    st.caption(f"Sector coverage: {len(archived_cohorts)} historical stock records; not a complete live classification.")
+
                 else:
                     st.warning("Archived sector evidence failed identity or date validation.")
 
