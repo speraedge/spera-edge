@@ -7,6 +7,7 @@ from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverag
 from edge_core.portfolio import position_size, journal_entry
 from edge_core.portfolio_risk import risk_budget
 from edge_core.leadership_levels import classify_leadership
+from edge_core.relative_strength import cross_sectional_rs
 from datetime import date
 from pathlib import Path
 import json
@@ -92,12 +93,21 @@ with tabs[1]:
                             high_df=hi,low_df=lo
                         )
                 levels=classify_leadership(scored,close_for_levels,setups=setup_candidates)
+                if close_for_levels is not None:
+                    rs_table=cross_sectional_rs(close_for_levels)
+                    levels=levels.merge(rs_table,on="Symbol",how="left",validate="one_to_one")
+                    levels["RS_80th_Percentile_Diagnostic"]=pd.to_numeric(
+                        levels["RS_Universe_252D_Pctile"],errors="coerce"
+                    ).ge(80)
+                else:
+                    levels["RS_80th_Percentile_Diagnostic"]=False
                 st.subheader("Leadership qualification funnel")
                 a1,a2,a3=st.columns(3)
                 a1.metric("Momentum leaders (trusted)",int(levels["Momentum_Leader"].sum()))
                 a2.metric("Provisional + price template",int((levels["Provisional_Momentum_Candidate"] & levels["Price_Template_Pass"]).sum()))
                 a3.metric("Provisional momentum candidates",int(levels["Provisional_Momentum_Candidate"].sum()))
                 st.metric("Provisional setup reviews",int(levels["Research_Level"].eq("PROVISIONAL_SETUP_REVIEW").sum()))
+                st.metric("RS percentile ≥80 (research only)",int(levels["RS_80th_Percentile_Diagnostic"].sum()))
                 st.caption("Setup checks use actual OHLCV and remain provisional. No certified SEPA signals.")
                 st.caption("SEPA and actionable setup qualification pending independent relative strength, sector and source checks.")
                 st.dataframe(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50),use_container_width=True)
