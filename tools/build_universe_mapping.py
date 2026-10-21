@@ -10,7 +10,7 @@ def main():
     out.mkdir(exist_ok=True)
     report={"generated_utc":datetime.now(timezone.utc).isoformat(),"universes":{}}
     instruments=fetch_upstox_instruments()
-    for spec in (NIFTY_500,)
+    for spec in (NIFTY_500,):
         try:
             universe,_=fetch_official_universe(spec,attempts_per_url=1)
             joined=join_official_universe(universe,instruments)
