@@ -1,0 +1,41 @@
+name: Build Upstox research snapshot
+on:
+  workflow_dispatch:
+    inputs:
+      mapping_json:
+        description: 'JSON mapping, e.g. {"RELIANCE":"NSE_EQ|INE002A01018"}'
+        required: true
+        type: string
+      start_date:
+        description: 'Historical start date YYYY-MM-DD'
+        required: true
+        type: string
+      end_date:
+        description: 'Historical end date YYYY-MM-DD'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Build read-only research snapshot
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          MAPPING_JSON: ${{ inputs.mapping_json }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+        run: |
+          python -m tools.build_upstox_snapshot --mapping "$MAPPING_JSON" --start "$START_DATE" --end "$END_DATE" --outdir snapshot
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upstox-research-snapshot
+          path: snapshot/
+          retention-days: 7
