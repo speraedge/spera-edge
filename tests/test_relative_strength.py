@@ -1,6 +1,6 @@
 import unittest
 import pandas as pd
-from edge_core.relative_strength import relative_strength
+from edge_core.relative_strength import relative_strength, cross_sectional_rs
 
 class RelativeStrengthTests(unittest.TestCase):
     def test_outperformance(self):
@@ -10,6 +10,15 @@ class RelativeStrengthTests(unittest.TestCase):
         result=relative_strength(stock,benchmark)
         self.assertGreater(result["RS_252D"],0)
         self.assertEqual(result["RS_Evidence"],"COMPUTED_ALIGNED")
+
+    def test_cross_sectional_percentile(self):
+        idx=pd.date_range("2025-01-01",periods=253,freq="B")
+        close=pd.DataFrame({"STRONG":[100+i for i in range(253)],
+                            "WEAK":[100+i*.1 for i in range(253)]},index=idx)
+        out=cross_sectional_rs(close).set_index("Symbol")
+        self.assertGreater(out.loc["STRONG","RS_Universe_252D_Pctile"],
+                           out.loc["WEAK","RS_Universe_252D_Pctile"])
+        self.assertIn("NOT_BENCHMARK",out.loc["STRONG","RS_Method"])
 
     def test_insufficient(self):
         idx=pd.date_range("2025-01-01",periods=100,freq="B")
