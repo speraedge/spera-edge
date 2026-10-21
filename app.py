@@ -5,6 +5,10 @@ import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
+from edge_core.portfolio import position_size, journal_entry
+from edge_core.upstox import fetch_daily_candles, UpstoxDataError
+from datetime import date, timedelta
+import os
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -31,6 +35,28 @@ def upload_frame(label, key):
     except (ValueError, pd.errors.ParserError) as exc:
         st.error(str(exc))
         return None
+
+with st.sidebar:
+    st.subheader("Upstox historical data")
+    instrument=st.text_input("Upstox instrument key", "NSE_EQ|INE002A01018")
+    if st.button("Fetch 450-day history"):
+        token=os.getenv("UPSTOX_ACCESS_TOKEN") or os.getenv("UPSTOX_ANALYTIC_TOKEN")
+        if not token:
+            try:
+                token=st.secrets.get("UPSTOX_ACCESS_TOKEN") or st.secrets.get("UPSTOX_ANALYTIC_TOKEN")
+            except (FileNotFoundError, KeyError):
+                token=None
+        try:
+            if not token:
+                raise UpstoxDataError("Access token not configured in app hosting secrets.")
+            frame=fetch_daily_candles(instrument,date.today()-timedelta(days=450),date.today(),token=token)
+            st.session_state["upstox_frame"]=frame
+        except (UpstoxDataError, ValueError) as exc:
+            st.error(str(exc))
+    if "upstox_frame" in st.session_state:
+        frame=st.session_state["upstox_frame"]
+        st.caption(f"{len(frame)} daily candles (unverified)")
+        st.download_button("Export OHLCV",frame.to_csv(index_label="Date"),"upstox_history.csv","text/csv")
 
 tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal"])
 with tabs[0]:
@@ -99,14 +125,35 @@ with tabs[2]:
                 st.error(str(exc))
 with tabs[3]:
     st.subheader("Portfolio & Journal")
-    st.info("Research note preview only; no persistence and no Upstox orders.")
+    st.caption("Position planning and session-only journal. Export entries to retain them.")
+    capital=st.number_input("Capital (INR)",min_value=1.0,value=500000.0)
+    risk_pct=st.number_input("Risk per trade (%)",min_value=0.1,max_value=5.0,value=1.0)
+    entry=st.number_input("Entry",min_value=0.01,value=100.0)
+    stop=st.number_input("Stop",min_value=0.01,value=95.0)
+    try:
+        sizing=position_size(capital,risk_pct,entry,stop)
+        st.metric("Risk-based quantity",sizing["quantity"])
+        st.metric("Planned stop loss (INR)",round(sizing["planned_risk"],2))
+        if sizing["notional"]>capital:
+            st.warning("Notional exposure exceeds capital.")
+    except ValueError as exc:
+        st.error(str(exc))
+    if "journal_rows" not in st.session_state:
+        st.session_state["journal_rows"]=[]
     with st.form("journal"):
         symbol=st.text_input("Symbol").strip().upper()
+        side=st.selectbox("Side",["LONG","SHORT"])
+        qty=st.number_input("Quantity",min_value=1,value=1,step=1)
         note=st.text_area("Journal note")
-        if st.form_submit_button("Preview"):
-            if symbol and note.strip():
-                st.write({"symbol":symbol,"note":note})
-                st.caption("Not saved.")
-            else:
-                st.error("Symbol and note are required.")
+        if st.form_submit_button("Add to session journal"):
+            try:
+                st.session_state["journal_rows"].append(journal_entry(symbol,side,entry,stop,int(qty),note))
+                st.success("Added to session. Export to save.")
+            except ValueError as exc:
+                st.error(str(exc))
+    if st.session_state["journal_rows"]:
+        journal=pd.DataFrame(st.session_state["journal_rows"])
+        st.dataframe(journal,use_container_width=True)
+        st.download_button("Export journal CSV",journal.to_csv(index=False),"spera_edge_journal.csv","text/csv")
+        st.warning("Session only: persistent cloud storage not configured.")
 st.caption("SPERA EDGE is not investment advice. No automatic execution, certified signals or return guarantees.")
