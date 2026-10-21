@@ -1,0 +1,44 @@
+name: NIFTY 500 automatic research snapshot
+on:
+  workflow_dispatch:
+  schedule:
+    # 19:30 IST on trading weekdays; schedule execution may be delayed by GitHub.
+    - cron: '0 14 * * 1-5'
+permissions:
+  contents: write
+concurrency:
+  group: edge-n500-snapshot
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Build isolated NIFTY 500 snapshot
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
+        run: python -m tools.publish_edge_snapshot
+      - name: Publish non-secret research snapshot to EDGE repository
+        run: |
+          git config user.name "spera-edge-bot"
+          git config user.email "spera-edge-bot@users.noreply.github.com"
+          git add data/latest
+          if ! git diff --cached --quiet; then
+            git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
+            git push origin HEAD:main
+          fi
+      - name: Archive published research evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: edge-n500-snapshot-evidence
+          path: data/latest/
+          if-no-files-found: ignore
+          retention-days: 14
