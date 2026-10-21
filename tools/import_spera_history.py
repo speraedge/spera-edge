@@ -57,7 +57,7 @@ def import_history(outdir="data/history",weeks=7,reader=query):
         if not trusted:
             continue
         key=row["weekly_key"]
-        chunks=reader("SELECT data FROM snapshot_chunks WHERE weekly_key=? AND commit_id=? AND kind='history' ORDER BY seq",(key,row["commit_id"]))
+        chunks=reader("SELECT data FROM snapshot_chunks WHERE weekly_key=? AND commit_id=? AND kind='full' ORDER BY seq",(key,row["commit_id"]))
         frame=decode_blob(chunks)
         if frame.empty or "Pure_Momentum_Rank" not in frame:
             continue
