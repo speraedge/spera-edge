@@ -28,7 +28,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Build read-only research snapshot
         env:
-          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
           MAPPING_JSON: ${{ inputs.mapping_json }}
           START_DATE: ${{ inputs.start_date }}
           END_DATE: ${{ inputs.end_date }}
