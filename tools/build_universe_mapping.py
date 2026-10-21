@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 from datetime import datetime,timezone
-from edge_core.momentum_universe import NIFTY_500,NIFTY_TOTAL_MARKET,fetch_official_universe
+from edge_core.momentum_universe import NIFTY_500,fetch_official_universe
 from edge_core.instrument_mapping import fetch_upstox_instruments,join_official_universe
 
 def main():
@@ -10,7 +10,7 @@ def main():
     out.mkdir(exist_ok=True)
     report={"generated_utc":datetime.now(timezone.utc).isoformat(),"universes":{}}
     instruments=fetch_upstox_instruments()
-    for spec in (NIFTY_500,NIFTY_TOTAL_MARKET):
+    for spec in (NIFTY_500,)
         try:
             universe,_=fetch_official_universe(spec,attempts_per_url=1)
             joined=join_official_universe(universe,instruments)
