@@ -32,8 +32,9 @@ def parse_instrument_master(payload):
         raise ValueError("No valid NSE equity instrument identities")
     duplicate=df[df.duplicated("ISIN",keep=False)]
     if not duplicate.empty:
-        # Ambiguous provider identity cannot be safely resolved by guessing.
-        df=df[~df["ISIN"].isin(duplicate["ISIN"])].copy()
+        # Fail closed: multiple NSE_EQ instrument keys for one ISIN are ambiguous.
+        # Reject the master instead of silently dropping identities.
+        raise ValueError("Ambiguous Upstox NSE equity ISIN mapping")
     return df
 
 def join_official_universe(universe,instruments):
