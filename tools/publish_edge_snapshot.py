@@ -48,8 +48,8 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
                 fields[name][symbol]=frame[name]
         except Exception as exc:
             failures.append({"symbol":symbol,"error":type(exc).__name__})
-    if successful<2:
-        raise RuntimeError(f"Only {successful}/500 symbols retrieved; refusing publication")
+    if successful<495:
+        raise RuntimeError(f"Only {successful}/{expected} symbols retrieved; minimum safe coverage is 495")
     matrices={}
     for name,series in fields.items():
         matrices[name]=pd.DataFrame(series).sort_index()
@@ -71,7 +71,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         extra=pd.DataFrame({"Symbol":missing,"Data_Quality":"FAIL","Reason":"Upstox historical retrieval unavailable",
                             "Ret_6M":np.nan,"Ret_12M":np.nan,"AnnVol":np.nan})
         research=pd.concat([research,extra],ignore_index=True)
-    if len(research)!=expected or research["Symbol"].duplicated().any():
+    if len(research)!=expected or research["Symbol"].isna().any() or research["Symbol"].duplicated().any():
         raise RuntimeError("Research universe identity gate failed")
     research.to_csv(destination/"leadership.csv",index=False)
     # Store recent OHLCV for chart inspection; do not expose provider secrets.
