@@ -80,7 +80,7 @@ with tabs[1]:
                 a1,a2,a3=st.columns(3)
                 a1.metric("Momentum leaders (trusted)",int(levels["Momentum_Leader"].sum()))
                 a2.metric("Price template passed",int((levels["Momentum_Leader"] & levels["Price_Template_Pass"]).sum()))
-                a3.metric("Certified SEPA / setup-ready",0)
+                a3.metric("Provisional momentum candidates",int(levels["Provisional_Momentum_Candidate"].sum()))
                 st.caption("SEPA and actionable setup qualification pending independent relative strength, sector and source checks.")
                 st.dataframe(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50),use_container_width=True)
                 st.metric("Trusted PASS stocks", int(scored["Data_Quality"].eq("PASS").sum()))
