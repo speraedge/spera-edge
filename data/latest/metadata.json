@@ -1,0 +1,22 @@
+{
+  "universe": "NIFTY_500",
+  "expected": 501,
+  "mapped": 500,
+  "retrieved": 500,
+  "retrieval_failures": [],
+  "research_pass": 0,
+  "research_review": 478,
+  "research_fail": 23,
+  "last_session": "2026-10-21",
+  "generated_utc": "2026-10-21T20:39:31.352478+00:00",
+  "source": "Upstox historical candles + official NSE constituent identities",
+  "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
+  "certified": false,
+  "breadth": {
+    "coverage": 500,
+    "eligible_50": 500,
+    "eligible_200": 491,
+    "above_50_pct": 13.8,
+    "above_200_pct": 33.4
+  }
+}
