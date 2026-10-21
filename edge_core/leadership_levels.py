@@ -22,6 +22,7 @@ def classify_leadership(ranks, close, setups=None, min_percentile=80):
         for symbol in out["Symbol"]:
             if symbol in close.columns:
                 stage[symbol] = stage2_template(close[symbol])["eligible"]
+    out["Provisional_Momentum_Candidate"] = (out["Data_Quality"].eq("REVIEW") & pd.to_numeric(out.get("Percentile", pd.Series(index=out.index, dtype=float)), errors="coerce").ge(min_percentile))
     out["Price_Template_Pass"] = out["Symbol"].map(stage).fillna(False).astype(bool)
     setup_symbols = set()
     if setups is not None and not setups.empty and "Ticker" in setups:
@@ -30,6 +31,7 @@ def classify_leadership(ranks, close, setups=None, min_percentile=80):
     out["SEPA_Status"] = "PENDING_RS_SECTOR_AND_SOURCE_VERIFICATION"
     out["Setup_Status"] = "NOT_CERTIFIED"
     out["Research_Level"] = "UNQUALIFIED"
+    out.loc[out["Provisional_Momentum_Candidate"], "Research_Level"] = "PROVISIONAL_MOMENTUM"
     out.loc[out["Momentum_Leader"], "Research_Level"] = "MOMENTUM_LEADER"
     out.loc[out["Momentum_Leader"] & out["Price_Template_Pass"], "Research_Level"] = "PRICE_TEMPLATE_PASS"
     out.loc[out["Momentum_Leader"] & out["Price_Template_Pass"] & out["Setup_Diagnostic"], "Research_Level"] = "SETUP_REVIEW"
