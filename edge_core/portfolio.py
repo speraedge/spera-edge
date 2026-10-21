@@ -14,7 +14,7 @@ def position_size(capital, risk_pct, entry, stop):
         raise ValueError("Enter positive capital/prices, distinct entry and stop, and risk 0-5%.")
     risk_rupees = capital * risk_pct / 100
     per_share = abs(entry-stop)
-    qty = math.floor(risk_rupees/per_share)
+    qty = min(math.floor(risk_rupees/per_share), math.floor(capital/entry))
     return {"quantity": qty, "risk_budget": risk_rupees, "risk_per_share": per_share, "planned_risk": qty*per_share, "notional": qty*entry}
 
 def journal_entry(symbol, side, entry, stop, quantity, note):
