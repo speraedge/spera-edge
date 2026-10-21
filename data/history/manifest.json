@@ -1,0 +1,60 @@
+{
+  "universe": "NIFTY_500",
+  "weeks": [
+    {
+      "weekly_key": "2026-10-16",
+      "file": "nifty500_2026-10-16.csv",
+      "rows": 501,
+      "source": "SPERA Wisdom D1 trusted weekly history",
+      "historical_only": true,
+      "source_commit": "4b17b4c22a654d75b331da0593c25540",
+      "sha256": "510b9ca631d71b3fe4382282119ba8ef91ba82bbcd570b8dcf95adf1d99f52a2",
+      "sector_rows": 20,
+      "cohort_rows": 445
+    },
+    {
+      "weekly_key": "2026-10-09",
+      "file": "nifty500_2026-10-09.csv",
+      "rows": 501,
+      "source": "SPERA Wisdom D1 trusted weekly history",
+      "historical_only": true,
+      "source_commit": "d0ad665433a646fb8aad4f44e7c4d278",
+      "sha256": "d7ef5fc42fc866970d33358dcbdf10f437bacef3567e3c5d00eae1c312e4a208",
+      "sector_rows": 20,
+      "cohort_rows": 445
+    },
+    {
+      "weekly_key": "2026-10-02",
+      "file": "nifty500_2026-10-02.csv",
+      "rows": 501,
+      "source": "SPERA Wisdom D1 trusted weekly history",
+      "historical_only": true,
+      "source_commit": "45b13cbac6be4f41ade56ca4086d0a5a",
+      "sha256": "c42ed11ced16d1a348e870e1e5e16500203c9acb3d48284234ae4c38717858ba",
+      "sector_rows": 20,
+      "cohort_rows": 444
+    },
+    {
+      "weekly_key": "2026-09-25",
+      "file": "nifty500_2026-09-25.csv",
+      "rows": 501,
+      "source": "SPERA Wisdom D1 trusted weekly history",
+      "historical_only": true,
+      "source_commit": "90a70103a2fa4f2598ea758a2872085b",
+      "sha256": "b8fb5895fd86acfcdd1d48b8933f46839689273258f2c2573c2e00525b12e785",
+      "sector_rows": 20,
+      "cohort_rows": 460
+    },
+    {
+      "weekly_key": "2026-09-18",
+      "file": "nifty500_2026-09-18.csv",
+      "rows": 501,
+      "source": "SPERA Wisdom D1 trusted weekly history",
+      "historical_only": true,
+      "source_commit": "e5c9a4fa70c0450e8300c39d85192005",
+      "sha256": "f1addb8d007fab92a3944167fc1f09c287723258be927788136c7bb06914db75",
+      "sector_rows": 20,
+      "cohort_rows": 458
+    }
+  ]
+}
