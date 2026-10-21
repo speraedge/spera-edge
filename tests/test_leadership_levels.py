@@ -9,6 +9,9 @@ class LeadershipLevelsTests(unittest.TestCase):
         self.assertFalse(result.loc[0,"Momentum_Leader"])
         self.assertTrue(result.loc[1,"Momentum_Leader"])
         self.assertTrue(result["Setup_Status"].eq("NOT_CERTIFIED").all())
+        self.assertTrue(result.loc[0,"Provisional_Momentum_Candidate"])
+        self.assertFalse(result.loc[1,"Provisional_Momentum_Candidate"])
+        self.assertEqual(result.loc[0,"Research_Level"],"PROVISIONAL_MOMENTUM")
 
     def test_duplicate_identity_fails(self):
         df = pd.DataFrame({"Symbol":["AAA","AAA"],"Data_Quality":["PASS","PASS"]})
