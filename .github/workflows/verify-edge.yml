@@ -13,6 +13,8 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
+      - name: Five-tab source integration preflight
+        run: python tools/verify_dashboard_acceptance.py
       - run: python -m unittest discover -s tests -v
       - run: python -m compileall -q app.py edge_workspace.py edge_evidence.py edge_core tests tools
       - run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
