@@ -61,6 +61,32 @@ class TradingReadinessTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.run_case(payload)
 
+    def test_price_template_and_rs_research_never_certify_trade(self):
+        evidence = pd.DataFrame([
+            {"Symbol": "AAA", "Price_Template_Pass": True,
+             "RS_80th_Percentile_Diagnostic": True},
+            {"Symbol": "BBB", "Price_Template_Pass": False,
+             "RS_80th_Percentile_Diagnostic": False},
+        ])
+        result = trading_readiness(self.scored, self.membership, [],
+                                   "2026-09-30", technical_evidence=evidence,
+                                   snapshot_fresh=True)
+        a, b = result["candidates"]
+        self.assertEqual(a["gates"]["sepa_trend_template"], "PASS_RESEARCH_ONLY")
+        self.assertEqual(a["gates"]["relative_strength"], "PASS_RESEARCH_ONLY")
+        self.assertEqual(a["gates"]["market_breadth"], "RESEARCH_AVAILABLE_UNCERTIFIED")
+        self.assertEqual(b["gates"]["sepa_trend_template"], "NOT_VERIFIED")
+        self.assertFalse(a["eligible_for_trading"])
+        self.assertFalse(result["ready_for_trading_signals"])
+
+    def test_duplicate_technical_evidence_rejected(self):
+        evidence = pd.DataFrame([
+            {"Symbol": "AAA", "Price_Template_Pass": True,
+             "RS_80th_Percentile_Diagnostic": True}] * 2)
+        with self.assertRaises(ValueError):
+            trading_readiness(self.scored, self.membership, [],
+                              "2026-09-30", technical_evidence=evidence)
+
     def test_duplicate_membership_rejected(self):
         membership = pd.concat([self.membership, self.membership.iloc[[0]]],
                                ignore_index=True)
