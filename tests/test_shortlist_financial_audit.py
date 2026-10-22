@@ -95,6 +95,33 @@ class ShortlistAuditTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT source_sha256 FROM edge_financial_evidence_events").fetchone()[0], expected)
             db.close()
 
+    def test_distinct_company_evidence_cannot_cross_match(self):
+        """An identical period must not allow one issuer's transcription to pass another."""
+        second = {"symbol": "DEF", "isin": "INE000B01002"}
+        second_filing = {**F, **second,
+                         "source_url": "https://nsearchives.nseindia.com/def.pdf"}
+        second_financial = {**R, **second,
+                            "source_url": second_filing["source_url"], "revenue": "200"}
+        digest = hashlib.sha256(b"%PDF-1.4\\\\nsynthetic fixture\\\\n").hexdigest()
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_shortlist_financial_audit(
+                [C, second], [F, second_filing], [R, second_financial],
+                "2026-09-30", Path(tmp),
+                transcriptions=[
+                    {**R, "document_sha256": digest},
+                    {**second_financial, "revenue": "201", "document_sha256": digest},
+                ], session=Session(200))
+        reviews = {row["symbol"]: row for row in result["review"]}
+        self.assertEqual(reviews["ABC"]["reconciliation"]["value_status"],
+                         "VALUES_MATCH_UNVERIFIED_TRANSCRIPTION")
+        self.assertEqual(reviews["DEF"]["reconciliation"]["value_status"],
+                         "SOURCE_VALUE_MISMATCH")
+        for row in reviews.values():
+            self.assertEqual(row["reconciliation"]["identity_status"],
+                             "FULL_IDENTITY_VERIFIED")
+            self.assertFalse(row["certified"])
+            self.assertFalse(row["ready_for_trading_signals"])
+
     def test_multi_company_mixed_sources_stay_quarantined(self):
         second = {"symbol": "DEF", "isin": "INE000B01002"}
         third = {"symbol": "GHI", "isin": "INE000C01003"}
