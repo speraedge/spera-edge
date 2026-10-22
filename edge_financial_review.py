@@ -1,5 +1,6 @@
 """Authenticated operator review. Never upgrades financial records to certified."""
 import uuid
+import json
 
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
 from edge_core.manual_evidence_queue import build_queue
@@ -71,6 +72,30 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
                                  event_id=st.session_state["edge_financial_event_id"])
             st.session_state["edge_financial_event_id"] = str(uuid.uuid4())
             st.success("Evidence saved as QUARANTINED_UNVERIFIED; not certified.")
+        st.divider()
+        st.caption("Official acquisition outcomes (uncertified)")
+        uploaded = st.file_uploader("Import acquisition review JSON", type=["json"],
+                                    key="edge_acquisition_review")
+        if uploaded is not None:
+            try:
+                imported = json.loads(uploaded.getvalue().decode("utf-8"))
+                outcomes = imported.get("review", imported.get("decisions", []))
+                if not isinstance(outcomes, list) or len(outcomes) > 1000:
+                    raise ValueError("Invalid review data")
+                keys = {(x["symbol"], x["isin"], x["period_end"],
+                         x["period_type"], x["basis"]) for x in queue}
+                eligible = [x for x in outcomes if isinstance(x, dict) and
+                            tuple(x.get(k) for k in ("symbol", "isin", "period_end",
+                                                      "period_type", "basis")) in keys]
+                st.caption(f"{len(eligible)} matching unverified outcomes")
+                if eligible:
+                    st.dataframe(eligible, use_container_width=True)
+                    if st.button("Append as unverified review events"):
+                        for outcome in eligible:
+                            ledger.append_reconciliation(queue, outcome)
+                        st.success("Saved as REVIEW_REQUIRED; no certification.")
+            except (ValueError, KeyError, TypeError, UnicodeError) as exc:
+                st.error("Import rejected: " + str(exc))
         history = ledger.events()
         if history:
             st.caption("Private append-only evidence history (owner-scoped)")
