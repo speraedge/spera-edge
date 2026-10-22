@@ -151,13 +151,13 @@ class Ledger:
         self.query = query
 
     def initialize(self):
-        self.query('''CREATE TABLE IF NOT EXISTS edge_trade_events (
-            owner_id TEXT NOT NULL, event_id TEXT NOT NULL, revision INTEGER NOT NULL,
-            created_utc TEXT NOT NULL, payload TEXT NOT NULL,
-            PRIMARY KEY(owner_id,event_id), UNIQUE(owner_id,revision))''')
+        from edge_core.private_integrity import initialize_private_schema
+        initialize_private_schema(self.query)
 
     def events(self):
         rows = self.query('SELECT event_id, revision, created_utc, payload FROM edge_trade_events WHERE owner_id=? ORDER BY revision', (self.owner,))
+        from edge_core.private_integrity import validate_revisions
+        validate_revisions(rows)
         return [dict(json.loads(row['payload']), event_id=row['event_id'], revision=row['revision'], created_utc=row['created_utc']) for row in rows]
 
     def append(self, kind, symbol, *, quantity=0, price=0, stop=0, fee=0, note='', event_id=None, expected_revision=None):
@@ -194,6 +194,8 @@ class Ledger:
             quantity, price, stop, fee = (event[key] for key in ('quantity', 'price', 'stop', 'fee'))
             if not all(math.isfinite(float(value)) for value in (quantity, price, stop, fee)) or fee < 0:
                 raise ValueError('Finite transaction values and nonnegative fees required')
+            if kind in ('STOP', 'NOTE') and fee != 0:
+                raise ValueError('Fees must belong to an actual BUY or SELL transaction')
             holding = holdings.setdefault(symbol, {'quantity': 0, 'cost': 0.0, 'stop': 0.0})
             if kind in ('BUY', 'SELL'):
                 if isinstance(quantity, bool) or int(quantity) != quantity or quantity <= 0 or price <= 0:
@@ -515,7 +517,10 @@ def render_private_portfolio(close, snapshot_usable):
 
 
 def verify_d1():
-    from edge_core.d1_store import d1_query
+    from edge_core.d1_store import d1_query as live_query, D1ConstraintError
+    from edge_core.private_integrity import synthetic_private_query, PRIVATE_TABLES
+    namespace = 'edge_audit_' + uuid.uuid4().hex + '_'
+    d1_query = synthetic_private_query(live_query, namespace)
     owner = 'EDGE_TECHNICAL_PROBE_' + str(uuid.uuid4())
     ledger = Ledger(owner, d1_query)
     ledger.initialize()
@@ -564,6 +569,24 @@ def verify_d1():
     audit = audit_decision_links(decision_rows, buy_ledger.events(), links)
     if audit['Status'].tolist() != ['VALID']:
         raise RuntimeError('Synthetic link integrity audit failed')
+    for table in PRIVATE_TABLES:
+        for sql, params in ((f'UPDATE {table} SET created_utc=? WHERE owner_id=?', ('invalid', owner)),
+                            (f'DELETE FROM {table} WHERE owner_id=?', (owner,))):
+            try:
+                d1_query(sql, params)
+            except Exception as exc:
+                if not isinstance(exc, D1ConstraintError) and 'Private records are append-only' not in str(exc):
+                    raise RuntimeError('Append-only probe could not verify a constraint rejection') from None
+            else:
+                raise RuntimeError('Private append-only protection missing')
+    if len(buy_ledger.events()) != 2 or len(d1_query('SELECT decision_id FROM edge_setup_decisions WHERE owner_id=?', (owner,))) != 1:
+        raise RuntimeError('Synthetic private records changed during integrity probe')
+    try:
+        buy_ledger.append('SELL', 'TECHNICAL-PROBE', quantity=1, price=100, expected_revision=0)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError('Stale revision was accepted')
     published = d1_query('SELECT run_id, rows_count FROM edge_snapshot_runs ORDER BY generated_utc DESC LIMIT 1')
     if not published:
         raise RuntimeError('No published EDGE D1 research snapshot')
@@ -573,6 +596,8 @@ def verify_d1():
     print(json.dumps({'ledger_write_read_verified': True, 'owner_isolation_verified': True,
                       'synthetic_probe_event': event_id, 'decision_link_verified': True,
                       'decision_owner_isolation_verified': True, 'duplicate_link_rejected': True,
+                      'append_only_verified': True, 'stale_revision_rejected': True,
+                      'synthetic_table_namespace': namespace,
                       'research_run': published[0]['run_id'], 'research_rows': count[0]['n']}))
 
 
