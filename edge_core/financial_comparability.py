@@ -20,7 +20,8 @@ def _prior_period(period_end, period_type):
         year = current.year - (current.month <= 3)
         month = ((current.month - 4) % 12) + 1
         from calendar import monthrange
-        day = min(current.day, monthrange(year, month)[1])
+        current_is_month_end = current.day == monthrange(current.year, current.month)[1]
+        day = monthrange(year, month)[1] if current_is_month_end else min(current.day, monthrange(year, month)[1])
         return date(year, month, day).isoformat()
     raise ValueError("Unsupported period type")
 
