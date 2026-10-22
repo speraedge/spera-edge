@@ -247,11 +247,18 @@ with tabs[3]:
 with tabs[4]:
     st.caption("Owner-only financial intake. Research records are not certified.")
     membership_path = SNAPSHOT_DIR / "current_membership.csv"
-    if not edge_meta or not membership_path.is_file():
-        st.warning("Verified snapshot and official membership with ISIN identities required.")
+    if not edge_meta or not snapshot_usable or not membership_path.is_file():
+        st.warning("Fresh validated snapshot and official membership with ISIN identities required.")
     else:
         try:
             membership = pd.read_csv(membership_path, dtype={"ISIN Code": str})
+            evidence_path = SNAPSHOT_DIR / "evidence.json"
+            if not evidence_path.is_file():
+                raise ValueError("Official membership provenance missing")
+            provenance = json.loads(evidence_path.read_text())
+            membership_hash = hashlib.sha256(membership_path.read_bytes()).hexdigest()
+            if provenance.get("membership_sha256") != membership_hash or not provenance.get("membership_source"):
+                raise ValueError("Official membership provenance/hash mismatch")
             ranks = snapshot_table("leadership")
             if ranks is None:
                 st.warning("No leadership ranks available for evidence review.")
