@@ -40,7 +40,8 @@ class TradingReadinessTests(unittest.TestCase):
                            {**queue[0], "certified": False,
                             "acquisition_status": "ACQUIRED_UNVERIFIED",
                             "source_url": "https://nsearchives.nseindia.com/aaa.pdf",
-                            "document_sha256": "a" * 64},
+                            "document_sha256": "a" * 64,
+                            "published_on": "2026-10-20"},
                            {**queue[1], "certified": False,
                             "acquisition_status": "HTTP_403"},
                        ]}
