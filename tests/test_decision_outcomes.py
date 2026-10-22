@@ -20,3 +20,13 @@ class DecisionOutcomeTests(unittest.TestCase):
     def test_missing_symbol(self):
         self.events[0]['symbol']='ZZZ'
         self.assertEqual(decision_outcomes(self.events,self.close,2).iloc[0]['Observation'],'SYMBOL_NOT_IN_SNAPSHOT')
+    def test_as_of_cannot_observe_future_sessions(self):
+        result = decision_outcomes(self.events, self.close, 2, as_of='2026-10-20').iloc[0]
+        self.assertEqual(result['Observation'], 'AWAITING_FUTURE_SESSIONS')
+        self.assertIsNone(result['Forward_Change_Pct'])
+    def test_invalid_horizons_and_duplicate_symbols_rejected(self):
+        for horizon in (True, 1.5):
+            with self.assertRaises(ValueError):
+                decision_outcomes(self.events, self.close, horizon)
+        with self.assertRaises(ValueError):
+            decision_outcomes(self.events, self.close.rename(columns={'BBB': 'AAA'}), 2)
