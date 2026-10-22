@@ -106,8 +106,10 @@ with tabs[0]:
                                     prices, breakout_high, low_history, breakout_volume,
                                     start=replay_start, end=replay_end)
                             st.session_state["edge_replay_result"] = replay
+                            st.session_state["edge_replay_range"] = (str(replay_start), str(replay_end))
                     replay = st.session_state.get("edge_replay_result")
                     if replay is not None:
+                        st.caption("Last replay period: " + str(st.session_state.get("edge_replay_range", "unknown")))
                         resolved = replay["Outcome"].isin(["SUCCESS", "FAILURE", "STOP_BREACH"])
                         wins = int((replay["Outcome"] == "SUCCESS").sum())
                         total = int(resolved.sum())
