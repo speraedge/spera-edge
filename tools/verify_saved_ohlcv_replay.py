@@ -3,6 +3,7 @@
 Research-only smoke check; no API calls, no orders, no performance certification.
 """
 from pathlib import Path
+import hashlib
 import json
 import pandas as pd
 from edge_core.historical_replay import replay_breakout_rules
@@ -39,11 +40,18 @@ def run(root=Path("data/latest"), output_dir=None):
                "unresolved": int(counts.get("UNRESOLVED", 0)),
                "quality": meta["quality"], "certified": False}
     if output_dir is not None:
+        snapshot_fingerprints = {
+            name + ".csv": hashlib.sha256((root / (name + ".csv")).read_bytes()).hexdigest()
+            for name in ("close", "high", "low", "volume")
+        }
+        snapshot_fingerprints["metadata.json"] = hashlib.sha256(
+            (root / "metadata.json").read_bytes()).hexdigest()
         destination = Path(output_dir)
         destination.mkdir(parents=True, exist_ok=True)
         result.sort_values(["Session", "Symbol"]).to_csv(destination / "breakout_events.csv", index=False)
         (destination / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
         (destination / "provenance.json").write_text(json.dumps({
+            "snapshot_sha256": snapshot_fingerprints,
             "snapshot_session": meta["last_session"],
             "snapshot_generated_utc": meta.get("generated_utc"),
             "source": meta["source"],
