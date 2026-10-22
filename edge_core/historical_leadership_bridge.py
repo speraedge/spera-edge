@@ -50,3 +50,29 @@ def historical_leadership_context(events, directory):
                            direction="backward", allow_exact_matches=False)
     joined["Wisdom_Week"] = (joined["Week"] - pd.Timedelta(days=1)).dt.strftime("%Y-%m-%d")
     return joined.sort_values("_row").drop(columns=["_row", "_session", "Week"])[columns]
+
+
+def leadership_breakout_summary(linked, *, top_rank=50):
+    """Descriptive comparison only; missing prior ranks never become nonleaders."""
+    required = {"Wisdom_Rank", "Outcome", "Symbol"}
+    if not required.issubset(linked.columns):
+        raise ValueError("Missing linked outcome fields")
+    frame = linked.copy()
+    frame["Wisdom_Rank"] = pd.to_numeric(frame["Wisdom_Rank"], errors="coerce")
+    frame["Group"] = "NO_PRIOR_RANK"
+    valid = frame["Wisdom_Rank"].notna() & (frame["Wisdom_Rank"] > 0)
+    frame.loc[valid & (frame["Wisdom_Rank"] <= top_rank), "Group"] = f"TOP_{top_rank}"
+    frame.loc[valid & (frame["Wisdom_Rank"] > top_rank), "Group"] = "OTHER_RANKED"
+    results = []
+    for group in (f"TOP_{top_rank}", "OTHER_RANKED", "NO_PRIOR_RANK"):
+        cohort = frame[frame["Group"] == group]
+        successes = int((cohort["Outcome"] == "SUCCESS").sum())
+        failures = int(cohort["Outcome"].isin(["FAILURE", "STOP_BREACH"]).sum())
+        resolved = successes + failures
+        results.append({"Prior_Leadership": group, "Breakouts": len(cohort),
+                        "Resolved": resolved, "Successes": successes,
+                        "Failures_Incl_Stops": failures,
+                        "Stop_Breaches": int((cohort["Outcome"] == "STOP_BREACH").sum()),
+                        "Unresolved": len(cohort) - resolved,
+                        "Success_Rate_Pct": round(100 * successes / resolved, 1) if resolved else None})
+    return pd.DataFrame(results)
