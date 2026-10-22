@@ -27,7 +27,7 @@ def export_bytes(frame, fmt, title):
             cell.font = Font(bold=True, color="FFFFFF")
             cell.fill = PatternFill("solid", fgColor="1F497D")
         for i, row in enumerate(clean.itertuples(index=False, name=None), 1):
-            ws.append([i] + [None if pd.isna(x) else x for x in row])
+            ws.append([i] + [None if x is None or (not isinstance(x, (list, dict, tuple)) and pd.isna(x)) else str(x) if isinstance(x, (list, dict, tuple)) else x for x in row])
         ws.freeze_panes = "B2"
         out = BytesIO()
         wb.save(out)
