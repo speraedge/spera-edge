@@ -24,12 +24,12 @@ class DocumentDigestLinkTests(unittest.TestCase):
                         row["document_sha256"] = "a" * 64
                     writer.writerow(row)
             with (root / "docs.csv").open("w", newline="") as stream:
-                writer = csv.DictWriter(stream, fieldnames=["symbol", "isin", "period_end",
-                    "basis", "source_url", "computed_sha256", "status"])
+                writer = csv.DictWriter(stream, fieldnames=["symbol", "isin", "period_end", "period_type",
+                    "basis", "published_on", "source_url", "computed_sha256", "status"])
                 writer.writeheader()
                 writer.writerow(dict(symbol="ABC", isin="INE000A01001", period_end="2026-03-31",
-                    basis="CONSOLIDATED", source_url="https://example.org/filing",
-                    computed_sha256="b" * 64, status="REVIEW_ORIGINAL_DOCUMENT"))
+                    basis="CONSOLIDATED", period_type="FY", published_on="2026-04-30",
+                    source_url="https://example.org/filing", computed_sha256="b" * 64, status="REVIEW_ORIGINAL_DOCUMENT"))
             result = reconcile_filing_values(root / "financials.csv", root / "transcriptions.csv",
                                              root / "out", root / "docs.csv")
             self.assertEqual(result["status_counts"]["DOCUMENT_PROVENANCE_MISMATCH"], 1)
