@@ -122,6 +122,19 @@ class ShortlistAuditTests(unittest.TestCase):
             self.assertFalse(row["certified"])
             self.assertFalse(row["ready_for_trading_signals"])
 
+    def test_missing_source_date_cannot_claim_verified_filing_identity(self):
+        """Seven-field identity must be complete, not merely present in every CSV."""
+        filing = {**F, "published_on": ""}
+        financial = {**R, "published_on": ""}
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_shortlist_financial_audit(
+                [C], [filing], [financial], "2026-09-30", Path(tmp),
+                transcriptions=[], session=Session(200))
+        evidence = result["review"][0]["reconciliation"]
+        self.assertNotEqual(evidence.get("identity_status"), "FULL_IDENTITY_VERIFIED")
+        self.assertEqual(result["review"][0]["reconciliation_status"], "REVIEW_REQUIRED")
+        self.assertFalse(result["ready_for_trading_signals"])
+
     def test_multi_company_mixed_sources_stay_quarantined(self):
         second = {"symbol": "DEF", "isin": "INE000B01002"}
         third = {"symbol": "GHI", "isin": "INE000C01003"}
