@@ -102,7 +102,7 @@ class ShortlistAuditTests(unittest.TestCase):
                          "source_url": "https://nsearchives.nseindia.com/def.pdf"}
         second_financial = {**R, **second,
                             "source_url": second_filing["source_url"], "revenue": "200"}
-        digest = hashlib.sha256(b"%PDF-1.4\\\\nsynthetic fixture\\\\n").hexdigest()
+        digest = hashlib.sha256(b"%PDF-1.4\\nsynthetic fixture\\n").hexdigest()
         with tempfile.TemporaryDirectory() as tmp:
             result = run_shortlist_financial_audit(
                 [C, second], [F, second_filing], [R, second_financial],
