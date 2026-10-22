@@ -12,6 +12,7 @@ from edge_core.portfolio_risk import risk_budget
 from edge_core.trade_review import journal_quality
 from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
 from edge_core.decision_outcomes import decision_outcomes
+from edge_core.decision_links import validate_trade_link
 
 
 def market_report(close):
@@ -389,6 +390,39 @@ def render_private_portfolio(close, snapshot_usable):
                 observed = decision_outcomes(decision_rows, close, horizon=outcome_horizon)
                 st.dataframe(numbered(observed), use_container_width=True)
                 export_section('Private dated decision outcomes', observed, 'private_decision_outcomes')
+        st.subheader('Explicit decision-to-trade links')
+        st.caption('A TAKE decision is not a fill. Link only an actual BUY recorded in your private ledger. No automatic symbol-only matching.')
+        query("""CREATE TABLE IF NOT EXISTS edge_decision_trade_links (
+            owner_id TEXT NOT NULL, decision_id TEXT NOT NULL, event_id TEXT NOT NULL,
+            created_utc TEXT NOT NULL, PRIMARY KEY(owner_id, decision_id, event_id),
+            UNIQUE(owner_id, event_id))""")
+        saved_links = query('SELECT decision_id, event_id, created_utc FROM edge_decision_trade_links WHERE owner_id=? ORDER BY created_utc DESC', (owner,))
+        st.dataframe(numbered(pd.DataFrame(saved_links)), use_container_width=True)
+        export_section('Private decision trade links', pd.DataFrame(saved_links), 'private_decision_trade_links')
+        take_options = [d['decision_id'] for d in decision_rows if d.get('decision') == 'TAKE']
+        buy_options = [e['event_id'] for e in events if e.get('kind') == 'BUY']
+        if take_options and buy_options:
+            with st.form('edge_decision_trade_link_form'):
+                chosen_decision = st.selectbox('TAKE decision ID', take_options)
+                chosen_event = st.selectbox('Recorded BUY event ID', buy_options)
+                link_submit = st.form_submit_button('Link recorded trade')
+            if link_submit:
+                try:
+                    validate_trade_link(decision_rows, events, chosen_decision, chosen_event)
+                    duplicate = query('SELECT decision_id FROM edge_decision_trade_links WHERE owner_id=? AND event_id=?', (owner, chosen_event))
+                    if duplicate:
+                        raise ValueError('This BUY event is already linked; no changes made')
+                    linked = query("""INSERT INTO edge_decision_trade_links
+                        (owner_id, decision_id, event_id, created_utc) VALUES (?, ?, ?, ?)
+                        ON CONFLICT DO NOTHING RETURNING event_id""",
+                        (owner, chosen_decision, chosen_event, datetime.now(timezone.utc).isoformat()))
+                    if not linked:
+                        raise ValueError('Link already exists or conflicts with another record')
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        else:
+            st.info('Record a TAKE decision and a BUY event before linking them.')
         if 'edge_decision_id' not in st.session_state:
             st.session_state['edge_decision_id'] = str(uuid.uuid4())
         with st.form('edge_setup_decision_form'):
