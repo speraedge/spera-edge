@@ -8,6 +8,7 @@ from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
 from edge_core.manual_evidence_queue import build_queue
 from edge_core.evidence_shortlist import evidence_shortlist
 from edge_core.acquisition_review_import import validate_acquisition_import, import_acquisition_review
+from edge_core.financial_certification_gate import assess_financial_certification
 
 
 def render_financial_evidence_review(scored, membership, financial_records, expected_period_end):
@@ -94,6 +95,53 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
                     st.success(f"{len(events)} review events recorded or safely replayed; not certified.")
             except (ValueError, KeyError, TypeError, UnicodeError) as exc:
                 st.error("Import rejected: " + str(exc))
+        st.divider()
+        st.caption("Independent financial evidence signoff assessment (research only)")
+        st.info("A matching transcription is not proof of source authenticity. Review original exchange filings before recording declarations. This workflow never certifies a financial statement or trading signal.")
+        review_upload = st.file_uploader(
+            "Upload shortlist financial audit summary JSON",
+            type=["json"], key="edge_financial_signoff_review")
+        if review_upload is not None:
+            try:
+                if review_upload.size > 1024 * 1024:
+                    raise ValueError("Financial audit exceeds 1 MB upload limit")
+                review_payload = json.loads(review_upload.getvalue().decode("utf-8"))
+                if not isinstance(review_payload, dict) or review_payload.get("certified") is not False or review_payload.get("ready_for_trading_signals") is not False:
+                    raise ValueError("Only explicitly uncertified audit summaries are accepted")
+                review_rows = review_payload.get("review")
+                if not isinstance(review_rows, list) or not 0 < len(review_rows) <= 1000:
+                    raise ValueError("Invalid financial audit review rows")
+                eligible_keys = {tuple(str(q[k]).strip().upper() for k in
+                    ("symbol", "isin", "period_end", "period_type", "basis")) for q in queue}
+                matches = [x for x in review_rows if isinstance(x, dict) and
+                    tuple(str(x.get(k, "")).strip().upper() for k in
+                    ("symbol", "isin", "period_end", "period_type", "basis")) in eligible_keys]
+                if len(matches) != len(review_rows):
+                    raise ValueError("Financial audit contains an identity outside the owner queue")
+                identities = [tuple(str(x.get(k, "")).strip().upper() for k in
+                    ("symbol", "isin", "period_end", "period_type", "basis")) for x in matches]
+                if len(set(identities)) != len(identities):
+                    raise ValueError("Duplicate financial audit identity")
+                selection = st.selectbox("Financial audit candidate",
+                    range(len(matches)),
+                    format_func=lambda i: matches[i]["symbol"] + " / " + matches[i]["period_end"],
+                    key="edge_financial_signoff_selection")
+                candidate = matches[selection]
+                preliminary = assess_financial_certification(candidate)
+                st.json(preliminary)
+                with st.form("edge_independent_signoff"):
+                    source_confirmed = st.checkbox("I independently checked the original official filing and issuer identity")
+                    values_confirmed = st.checkbox("I independently checked revenue, PAT, period, basis and units against the original filing")
+                    submit_review = st.form_submit_button("Record review assessment (not certification)")
+                if submit_review:
+                    assessment = ledger.append_signoff_review(
+                        queue, candidate, reviewer=owner,
+                        source_authenticated=source_confirmed,
+                        figures_independently_checked=values_confirmed)
+                    st.success("Assessment appended to private audit ledger; no financial certification issued.")
+                    st.json(assessment)
+            except (ValueError, KeyError, TypeError, UnicodeError) as exc:
+                st.error("Financial audit review rejected: " + str(exc))
         history = ledger.events()
         if history:
             st.caption("Private append-only evidence history (owner-scoped)")
