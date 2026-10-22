@@ -34,3 +34,22 @@ class DocumentDigestLinkTests(unittest.TestCase):
                                              root / "out", root / "docs.csv")
             self.assertEqual(result["status_counts"]["DOCUMENT_PROVENANCE_MISMATCH"], 1)
             self.assertFalse(result["certified"])
+
+    def test_incomplete_identity_never_matches_transcription(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fields = ["symbol", "isin", "period_end", "period_type", "basis",
+                      "source_url", "published_on", "revenue", "pat"]
+            record = dict(symbol="ABC", isin="INE000A01001", period_end="2026-03-31",
+                          period_type="FY", basis="CONSOLIDATED", source_url="",
+                          published_on="2026-04-30", revenue="100", pat="10")
+            for name, extra in [("financials.csv", []),
+                                ("transcriptions.csv", ["document_sha256"])]:
+                with (root / name).open("w", newline="") as stream:
+                    writer = csv.DictWriter(stream, fieldnames=fields + extra)
+                    writer.writeheader()
+                    writer.writerow({**record, **({"document_sha256": "a" * 64} if extra else {})})
+            result = reconcile_filing_values(root / "financials.csv",
+                                             root / "transcriptions.csv", root / "out")
+            self.assertEqual(result["status_counts"], {"INCOMPLETE_FILING_IDENTITY": 1})
+            self.assertFalse(result["certified"])
