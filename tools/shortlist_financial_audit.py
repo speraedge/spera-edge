@@ -76,6 +76,37 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
                          "document_sha256": evidence.get("document_sha256", ""),
                          "published_on": published_on,
                          "status": "REVIEW_REQUIRED", "certified": False})
+    # A downloaded PDF is not a reconciled financial statement. Surface a
+    # per-candidate audit decision from all four independent evidence layers.
+    reconciliation = {}
+    if audit is not None:
+        review_dir = out / "audit" / "review"
+        layers = (
+            ("filing_document_review.csv", "document_status", "status"),
+            ("statement_document_reconciliation.csv", "statement_status", "document_status"),
+            ("filing_value_reconciliation.csv", "value_status", "status"),
+            ("financial_comparability.csv", "comparability_status", "status"),
+        )
+        for filename, label, field in layers:
+            with (review_dir / filename).open(newline="", encoding="utf-8") as stream:
+                for row in csv.DictReader(stream):
+                    identity = (row["symbol"].strip().upper(), row.get("period_end", ""))
+                    reconciliation.setdefault(identity, {})[label] = row[field]
+    for item in outcomes:
+        identity = (item["symbol"], item["period_end"])
+        evidence = reconciliation.get(identity, {})
+        item["reconciliation"] = evidence
+        item["financial_values_verified"] = False
+        item["ready_for_trading_signals"] = False
+        item["reconciliation_status"] = (
+            "DOCUMENT_AND_VALUES_MATCH_UNCERTIFIED"
+            if item["acquisition_status"] == "ACQUIRED_UNVERIFIED"
+            and evidence.get("document_status") == "REVIEW_ORIGINAL_DOCUMENT"
+            and evidence.get("statement_status") == "MATCHED_DOCUMENT_UNCERTIFIED"
+            and evidence.get("value_status") == "VALUES_MATCH_UNVERIFIED_TRANSCRIPTION"
+            and evidence.get("comparability_status") == "CANDIDATE_COMPARABLE_UNVERIFIED"
+            else "REVIEW_REQUIRED"
+        )
     result = {"candidate_count": len(outcomes), "registered": bridge["registered"],
               "status_counts": dict(Counter(x["acquisition_status"] for x in outcomes)),
               "review": outcomes, "audit": audit, "certified": False,
