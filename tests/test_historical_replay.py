@@ -57,6 +57,18 @@ class HistoricalReplayTests(unittest.TestCase):
         self.assertEqual(reference["Outcome"].tolist(), replay["Outcome"].tolist())
         self.assertEqual(reference["Pivot"].tolist(), replay["Pivot"].tolist())
 
+    def test_candidate_subset_matches_full_universe(self):
+        c, h, l, v = self.fixture()
+        for frame in (c, h, l, v):
+            frame["B"] = frame["A"]
+        full = replay_breakout_rules(c, h, l, v, start=c.index[65], end=c.index[65])
+        selected = replay_breakout_rules(c[["A"]], h[["A"]], l[["A"]], v[["A"]],
+                                         start=c.index[65], end=c.index[65])
+        self.assertEqual(len(full), 2)
+        self.assertEqual(len(selected), 1)
+        self.assertEqual(full[full["Symbol"].eq("A")].reset_index(drop=True).to_dict("records"),
+                         selected.to_dict("records"))
+
     def test_misaligned_input_fails(self):
         c, h, l, v = self.fixture()
         with self.assertRaises(ValueError):
