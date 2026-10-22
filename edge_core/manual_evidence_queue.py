@@ -3,6 +3,7 @@
 Pure research utility. Never certifies an observation or changes frozen V1.
 """
 import csv
+import math
 from datetime import date
 from pathlib import Path
 
@@ -21,6 +22,15 @@ def build_queue(shortlist, financial_records, expected_period_end, period_type="
     date.fromisoformat(expected_period_end)
     if period_type not in ("Q", "FY") or basis not in ("CONSOLIDATED", "STANDALONE"):
         raise ValueError("Unsupported reporting period or basis")
+    def present(record, field):
+        value = record.get(field)
+        if value is None or isinstance(value, bool):
+            return False
+        if isinstance(value, (float, int)):
+            return math.isfinite(value)
+        text = str(value).strip()
+        return bool(text) and text.lower() not in ("nan", "none", "null", "nat", "inf", "-inf")
+
     index = {}
     for record in financial_records:
         key = (str(record.get("isin", "")).strip().upper(),
@@ -41,7 +51,7 @@ def build_queue(shortlist, financial_records, expected_period_end, period_type="
         matches = index.get((isin, expected_period_end, period_type, basis), [])
         if len(matches) == 1:
             record = matches[0]
-            missing = [field for field in REQUIRED if str(record.get(field, "")).strip() == ""]
+            missing = [field for field in REQUIRED if not present(record, field)]
             reason = "MISSING_FIELDS" if missing else "SOURCE_VERIFICATION_REQUIRED"
         elif len(matches) > 1:
             missing = []
