@@ -34,7 +34,7 @@ def audit_filing_documents(register_csv, documents_dir, output_dir):
     for number, item in enumerate(records, 2):
         name = str(item["document_filename"] or "").strip()
         expected = str(item["expected_sha256"] or "").strip().lower()
-        key = (item["isin"], item["period_end"], item["basis"])
+        key = (item["isin"], item["period_end"], item.get("period_type", ""), item["basis"], item["source_url"])
         status = "REVIEW_ORIGINAL_DOCUMENT"
         digest = ""
         if key in seen:
@@ -57,12 +57,13 @@ def audit_filing_documents(register_csv, documents_dir, output_dir):
                     status = "INVALID_PDF_DOCUMENT"
         seen.add(key)
         findings.append({"row": number, "symbol": item["symbol"], "isin": item["isin"],
-                         "period_end": item["period_end"], "basis": item["basis"],
+                         "period_end": item["period_end"], "period_type": item.get("period_type", ""),
+                         "basis": item["basis"], "published_on": item.get("published_on", ""),
                          "source_url": item["source_url"], "document_filename": name,
                          "computed_sha256": digest, "status": status, "certified": False})
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    fields = ["row", "symbol", "isin", "period_end", "basis", "source_url",
+    fields = ["row", "symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
               "document_filename", "computed_sha256", "status", "certified"]
     with (out / "filing_document_review.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
