@@ -20,6 +20,7 @@ import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from edge_core.snapshot_integrity import validate_snapshot
+from edge_core.ohlcv_integrity import snapshot_is_fresh
 from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report
 from edge_financial_review import render_financial_evidence_review
 from edge_exports import export_section, numbered
@@ -49,9 +50,9 @@ if edge_meta:
         last_session=pd.Timestamp(edge_meta["last_session"]).date()
         now_ist=datetime.now(ZoneInfo("Asia/Kolkata"))
         age=(now_ist.date()-last_session).days
-        snapshot_usable=0 <= age <= 5 and (age > 0 or now_ist.hour >= 16)
-        if age>5 or age<0:
-            st.error(f"Snapshot is stale or dated in the future ({age} calendar days). Do not trade from these results.")
+        snapshot_usable=snapshot_is_fresh(last_session, now_ist)
+        if not snapshot_usable:
+            st.error(f"Snapshot does not match the latest expected completed session ({age} calendar days old). Weekday/verified-special-session check; unverified exchange holidays fail closed. Do not trade from stale results.")
     except (ValueError,TypeError,KeyError):
         st.error("Snapshot session date invalid; research outputs are not certified.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
