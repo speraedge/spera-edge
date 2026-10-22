@@ -40,10 +40,11 @@ class FinancialBundleIntegrationTests(unittest.TestCase):
                      published_on="2026-10-20"),
             ]
             write_csv(financials, list(rows[0]), rows)
-            write_csv(register, ["symbol", "isin", "period_end", "basis",
-                                 "source_url", "document_filename", "expected_sha256"],
+            write_csv(register, ["symbol", "isin", "period_end", "period_type", "basis",
+                                 "published_on", "source_url", "document_filename", "expected_sha256"],
                       [dict(symbol="ABC", isin="INE000A01001", period_end=row["period_end"],
-                            basis="CONSOLIDATED", source_url=url,
+                            basis="CONSOLIDATED", period_type="Q",
+                            published_on=row["published_on"], source_url=url,
                             document_filename="original.pdf", expected_sha256=digest)
                        for row in rows])
             write_csv(transcription, list(rows[0]) + ["document_sha256"],
