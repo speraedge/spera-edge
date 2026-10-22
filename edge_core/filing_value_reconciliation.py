@@ -42,9 +42,12 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir, docu
         index[key(item)].append(item)
     rows = []
     for number, financial in enumerate(financials, 2):
-        matches = index.get(key(financial), [])
+        identity = key(financial)
+        matches = index.get(identity, [])
         status = "MISSING_SOURCE_TRANSCRIPTION"
-        if len(matches) > 1:
+        if not all(identity):
+            status = "INCOMPLETE_FILING_IDENTITY"
+        elif len(matches) > 1:
             status = "AMBIGUOUS_SOURCE_TRANSCRIPTION"
         elif len(matches) == 1:
             item = matches[0]
