@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.trading_readiness import trading_readiness
+from edge_exports import numbered, export_section
 
 
 def render_trader_readiness(leadership, membership, setups, period_end, *,
@@ -32,7 +33,8 @@ def render_trader_readiness(leadership, membership, setups, period_end, *,
         row.update(candidate["gates"])
         rows.append(row)
     frame = pd.DataFrame(rows)
-    st.dataframe(frame, use_container_width=True)
+    st.dataframe(numbered(frame), use_container_width=True)
+    export_section("Integrated readiness", frame, "integrated_readiness")
     st.download_button("Download integrated readiness review", frame.to_csv(index=False),
                        "edge_trading_readiness_review.csv", "text/csv")
     st.warning("All candidates remain REVIEW_REQUIRED pending independent evidence and trade confirmation.")
