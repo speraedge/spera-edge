@@ -43,7 +43,8 @@ class OfficialAcquisitionBridgeTests(unittest.TestCase):
 
     def test_invalid_host_and_date_blocked(self):
         for bad in ({**FILING, "source_url": "https://example.com/x.pdf"},
-                    {**FILING, "published_on": "2026-09-01"}):
+                    {**FILING, "published_on": "2026-09-01"},
+                    {**FILING, "published_on": "2099-01-01"}):
             result, rows = self.run_bridge([bad])
             self.assertEqual(rows, [])
             self.assertNotEqual(result["review"][0]["acquisition_status"],
