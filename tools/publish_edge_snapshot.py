@@ -102,11 +102,17 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         "certified":False,"breadth":breadth
     }
     (staging/"metadata.json").write_text(json.dumps(metadata,indent=2))
-    validate_snapshot(staging)
-    destination.mkdir(parents=True,exist_ok=True)
-    for name in ("leadership.csv","close.csv","high.csv","low.csv","volume.csv","metadata.json"):
-        os.replace(staging/name,destination/name)
-    shutil.rmtree(staging,ignore_errors=True)
+    try:
+        validate_snapshot(staging)
+        latest = pd.Timestamp(metadata["last_session"]).date()
+        if (end - latest).days > 5:
+            raise RuntimeError("Provider snapshot stale; preserving last-known-good")
+        destination.mkdir(parents=True,exist_ok=True)
+        for name in ("leadership.csv","close.csv","high.csv","low.csv","volume.csv"):
+            os.replace(staging/name,destination/name)
+        os.replace(staging/"metadata.json",destination/"metadata.json")
+    finally:
+        shutil.rmtree(staging,ignore_errors=True)
     return metadata
 
 if __name__=="__main__":
