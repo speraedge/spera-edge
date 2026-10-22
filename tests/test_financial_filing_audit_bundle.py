@@ -43,7 +43,7 @@ class BundleTests(unittest.TestCase):
             register = root / "register.csv"
             financials = root / "financials.csv"
             transcriptions = root / "transcriptions.csv"
-            write_csv(register, ["symbol", "isin", "period_end", "basis", "source_url"], [base])
+            write_csv(register, ["symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url"], [base])
             write_csv(financials, list(base), [base])
             transcription = dict(base, document_sha256=hashlib.sha256(
                 b"%PDF-1.4\nsynthetic fixture\n").hexdigest())
