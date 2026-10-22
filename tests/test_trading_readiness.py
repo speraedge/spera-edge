@@ -87,6 +87,26 @@ class TradingReadinessTests(unittest.TestCase):
             trading_readiness(self.scored, self.membership, [],
                               "2026-09-30", technical_evidence=evidence)
 
+    def test_setup_scanner_diagnostic_remains_research_only(self):
+        setups = pd.DataFrame([
+            {"Ticker": "AAA", "VCP_Setup": "VCP", "VCP_Score": 11},
+        ])
+        result = trading_readiness(self.scored, self.membership, [],
+                                   "2026-09-30", setup_evidence=setups)
+        self.assertEqual(result["candidates"][0]["gates"]["vcp_pivot_volume"],
+                         "SETUP_RESEARCH_ONLY")
+        self.assertEqual(result["candidates"][0]["setup_score"], 11.0)
+        self.assertEqual(result["candidates"][1]["gates"]["vcp_pivot_volume"],
+                         "NOT_VERIFIED")
+        self.assertFalse(result["candidates"][0]["eligible_for_trading"])
+
+    def test_duplicate_setup_tickers_rejected(self):
+        setups = pd.DataFrame([{"Ticker": "AAA", "VCP_Setup": "VCP",
+                                "VCP_Score": 10}] * 2)
+        with self.assertRaises(ValueError):
+            trading_readiness(self.scored, self.membership, [],
+                              "2026-09-30", setup_evidence=setups)
+
     def test_duplicate_membership_rejected(self):
         membership = pd.concat([self.membership, self.membership.iloc[[0]]],
                                ignore_index=True)
