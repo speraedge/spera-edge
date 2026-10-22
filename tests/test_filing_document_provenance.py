@@ -24,7 +24,7 @@ class FilingDocumentTests(unittest.TestCase):
                 writer.writerow(["ABC", "INE000A01001", "2026-03-31", "CONSOLIDATED",
                                  "https://nsearchives.nseindia.com/filing.pdf", "report.pdf", digest])
                 writer.writerow(["XYZ", "INE000B01001", "2026-03-31", "CONSOLIDATED",
-                                 "https://example.org/filing", "missing.pdf", digest])
+                                 "https://nsearchives.nseindia.com/missing.pdf", "missing.pdf", digest])
             summary = audit_filing_documents(register, docs, root / "out")
             self.assertEqual(summary["status_counts"]["REVIEW_ORIGINAL_DOCUMENT"], 1)
             self.assertEqual(summary["status_counts"]["MISSING_LOCAL_DOCUMENT"], 1)
@@ -38,9 +38,9 @@ class FilingDocumentTests(unittest.TestCase):
             digest = hashlib.sha256(payload).hexdigest()
             register = root / "register.csv"
             register.write_text(
-                "symbol,isin,period_end,basis,source_url,document_filename,expected_sha256\\n"
+                "symbol,isin,period_end,basis,source_url,document_filename,expected_sha256\n"
                 "ABC,INE000A01001,2026-03-31,CONSOLIDATED,https://nsearchives.nseindia.com/report.pdf,report.pdf,"
-                + digest + "\\n")
+                + digest + "\n")
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["INVALID_PDF_DOCUMENT"], 1)
             register.write_text(
