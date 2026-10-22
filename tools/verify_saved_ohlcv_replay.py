@@ -42,7 +42,7 @@ def run(root=Path("data/latest"), output_dir=None):
         destination = Path(output_dir)
         destination.mkdir(parents=True, exist_ok=True)
         result.sort_values(["Session", "Symbol"]).to_csv(destination / "breakout_events.csv", index=False)
-        (destination / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\\n")
+        (destination / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
         (destination / "provenance.json").write_text(json.dumps({
             "snapshot_session": meta["last_session"],
             "snapshot_generated_utc": meta.get("generated_utc"),
@@ -52,7 +52,7 @@ def run(root=Path("data/latest"), output_dir=None):
             "outcome_horizon_sessions": 10,
             "volume_multiple": 1.5,
             "certified": False,
-        }, indent=2, sort_keys=True) + "\\n")
+        }, indent=2, sort_keys=True) + "\n")
     print(json.dumps(summary, sort_keys=True))
     return summary
 
