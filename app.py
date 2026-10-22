@@ -2,6 +2,7 @@
 import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
+from edge_core.breakout_health import breakout_health
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
 from edge_core.portfolio import position_size, journal_entry
@@ -61,6 +62,25 @@ with tabs[0]:
 
     if prices is not None:
         render_market(prices)
+        st.subheader("Breakout health (research-only)")
+        st.caption("Prior 20-session high breakout on >=1.5x prior 50-session volume; "
+                   "10-session forward close above breakout close = success. "
+                   "Unresolved events are excluded. Heuristic, not SEPA certification.")
+        breakout_high = snapshot_table("high")
+        breakout_volume = snapshot_table("volume")
+        if breakout_high is not None and breakout_volume is not None:
+            health = breakout_health(prices, breakout_high, breakout_volume)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Qualified breakouts", health["qualified"])
+            m2.metric("Resolved outcomes", health["resolved"])
+            m3.metric("10-session success rate",
+                      f'{health["success_rate_pct"]}%' if health["success_rate_pct"] is not None else "Insufficient outcomes")
+            st.caption(f'Successes: {health["successes"]} | Failures: {health["failures"]} | '
+                       f'Unresolved: {health["unresolved"]}. Current-universe survivorship bias applies.')
+            st.dataframe(numbered(health["events"].tail(100)), use_container_width=True)
+            export_section("Breakout outcomes", health["events"], "edge_breakout_outcomes")
+        else:
+            st.info("Breakout health requires aligned high, close and volume history.")
         render_industries(SNAPSHOT_DIR,prices)
         stats = market_breadth(prices)
         st.metric("Symbols provided", stats["coverage"])
