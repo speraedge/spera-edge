@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from edge_core.snapshot_integrity import validate_snapshot
 from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries
 from edge_financial_review import render_financial_evidence_review
+from edge_financial_review import render_financial_evidence_review
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -244,6 +245,27 @@ with tabs[2]:
 with tabs[3]:
     st.subheader("Portfolio & Journal")
     render_private_portfolio(prices,snapshot_usable)
+with tabs[4]:
+    st.caption("Owner-only financial intake. Research records are not certified.")
+    membership_path = SNAPSHOT_DIR / "current_membership.csv"
+    if not edge_meta or not membership_path.is_file():
+        st.warning("Verified snapshot and official membership with ISIN identities required.")
+    else:
+        try:
+            membership = pd.read_csv(membership_path, dtype={"ISIN Code": str})
+            ranks = snapshot_table("leadership")
+            if ranks is None:
+                st.warning("No leadership ranks available for evidence review.")
+            else:
+                scored = apply_frozen_v1_scores(ranks.copy())
+                financial_path = SNAPSHOT_DIR / "financial_records.csv"
+                financial_records = pd.read_csv(financial_path).to_dict("records") if financial_path.is_file() else []
+                st.warning("Select the reporting period end from the original company filings. No date is inferred.")
+                period_end = st.date_input("Financial reporting period end", key="edge_financial_period_end")
+                if st.checkbox("Open owner-only evidence intake", value=False):
+                    render_financial_evidence_review(scored, membership, financial_records, period_end.isoformat())
+        except (ValueError, KeyError, OSError, pd.errors.ParserError) as exc:
+            st.error("Financial evidence review unavailable: " + str(exc))
 st.caption("SPERA EDGE is not investment advice. No automatic execution, certified signals or return guarantees.")
 
 with tabs[4]:
