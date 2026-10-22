@@ -187,13 +187,15 @@ with tabs[1]:
                             sector_now=current_sector_research(current_prices,archived_cohorts,selected_week)
                             st.subheader("Current price-based sector momentum")
                             st.caption("Live price returns grouped using archived sector membership from "+selected_week+". PROVISIONAL; mapping is incomplete and not a current certified sector index.")
-                            st.dataframe(sector_now,use_container_width=True)
+                            st.dataframe(numbered(sector_now),use_container_width=True)
+                            export_section("Current sector research", sector_now, "current_sector_research")
                             st.download_button("Download provisional current sector research",sector_now.to_csv(index=False),"edge_current_sector_research.csv","text/csv")
                         except ValueError as sector_error:
                             st.warning(f"Current sector research unavailable: {sector_error}")
                     st.subheader("Archived sector leadership")
                     st.caption("Historical SPERA Wisdom sector rankings only; not a current EDGE sector signal.")
-                    st.dataframe(archived_sectors.sort_values("sector_rank"),use_container_width=True)
+                    st.dataframe(numbered(archived_sectors.sort_values("sector_rank")),use_container_width=True)
+                    export_section("Archived sectors", archived_sectors.sort_values("sector_rank"), "archived_sectors_"+selected_week)
                     st.download_button(
                         "Download archived sector rankings",
                         archived_sectors.sort_values("sector_rank").to_csv(index=False),
@@ -206,7 +208,8 @@ with tabs[1]:
 
             if "Pure_Momentum_Rank" in historical.columns:
                 historical=historical.sort_values("Pure_Momentum_Rank",na_position="last")
-            st.dataframe(historical.head(50),use_container_width=True)
+            st.dataframe(numbered(historical.head(50)),use_container_width=True)
+            export_section("Historical weekly leadership", historical, "history_"+selected_week)
             st.download_button("Download selected historical week",historical.to_csv(index=False),f"edge_history_{selected_week}.csv","text/csv")
         except (OSError,ValueError,KeyError,pd.errors.ParserError) as exc:
             st.error(f"Historical snapshot unavailable: {exc}")
@@ -220,7 +223,8 @@ with tabs[1]:
         for sym in stage_close:
             res=stage2_template(stage_close[sym])
             records.append({"Symbol":sym,"Price-template pass":res["eligible"],"Note":res["reason"]})
-        st.dataframe(pd.DataFrame(records), use_container_width=True)
+        st.dataframe(numbered(pd.DataFrame(records)), use_container_width=True)
+        export_section("Price template diagnostics", pd.DataFrame(records), "price_template")
         st.caption("Stage 2 relative-strength requirement must be verified separately. Price-only pass is not full Stage 2 qualification.")
 with tabs[2]:
     st.subheader("Trade Desk")
