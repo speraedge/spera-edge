@@ -112,3 +112,46 @@ class FinancialEvidenceLedger:
         if not existing or existing[0]["owner_id"] != self.owner or existing[0]["payload_json"] != payload:
             raise ValueError("Event ID collision or altered reconciliation replay")
         return event_id
+
+    def append_signoff_review(self, queue, candidate, *, reviewer, source_authenticated,
+                              figures_independently_checked, event_id=None):
+        """Record authenticated-owner review; never self-certify a financial value."""
+        from edge_core.financial_certification_gate import assess_financial_certification
+        allowed = {tuple(str(x[k]).strip().upper() for k in
+                   ("symbol", "isin", "period_end", "period_type", "basis")) for x in queue}
+        key = tuple(str(candidate.get(k, "")).strip().upper() for k in
+                    ("symbol", "isin", "period_end", "period_type", "basis"))
+        if key not in allowed:
+            raise ValueError("Financial review outside owner queue")
+        if not isinstance(reviewer, str) or reviewer.strip() != self.owner:
+            raise ValueError("Reviewer must be the authenticated owner")
+        assessment = assess_financial_certification(
+            candidate, reviewer=self.owner,
+            source_authenticated=source_authenticated,
+            figures_independently_checked=figures_independently_checked)
+        safe = {
+            "identity": dict(zip(("symbol", "isin", "period_end", "period_type", "basis"), key)),
+            "assessment": assessment,
+            "reviewer": self.owner,
+            "source_authenticated": source_authenticated is True,
+            "figures_independently_checked": figures_independently_checked is True,
+            "source_url": str(candidate.get("source_url", "")),
+            "document_sha256": str(candidate.get("document_sha256", "")),
+        }
+        payload = json.dumps(safe, sort_keys=True, allow_nan=False)
+        event_id = event_id or hashlib.sha256((self.owner + ":" + payload).encode()).hexdigest()
+        rows = self.query("""INSERT INTO edge_financial_evidence_events
+            (event_id, owner_id, symbol, isin, period_end, period_type, basis,
+             created_utc, event_kind, intake_status, source_sha256, payload_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(event_id) DO NOTHING RETURNING event_id""",
+            (event_id, self.owner, *key, datetime.now(timezone.utc).isoformat(),
+             "REVIEW_NOTE", "REVIEW_REQUIRED",
+             safe["document_sha256"] or None, payload))
+        if rows:
+            return assessment
+        existing = self.query("""SELECT owner_id, payload_json FROM edge_financial_evidence_events
+            WHERE event_id=?""", (event_id,))
+        if not existing or existing[0]["owner_id"] != self.owner or existing[0]["payload_json"] != payload:
+            raise ValueError("Altered or cross-owner signoff review replay")
+        return assessment
