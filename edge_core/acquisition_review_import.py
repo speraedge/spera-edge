@@ -4,6 +4,7 @@ Reject the entire batch on an invalid or unmatched record; never silently
 drop evidence or promote a certification flag.
 """
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
+from tools.acquire_official_filings import validate_url
 
 KEYS = ("symbol", "isin", "period_end", "period_type", "basis")
 ALLOWED = frozenset(("SOURCE_NOT_FOUND", "AMBIGUOUS_SOURCE",
@@ -39,6 +40,17 @@ def validate_acquisition_import(payload, queue):
             raise ValueError("Certification claim in acquisition outcome")
         if str(item.get("acquisition_status", "")).strip().upper() not in ALLOWED:
             raise ValueError("Invalid acquisition outcome status")
+        status = str(item["acquisition_status"]).strip().upper()
+        if status == "ACQUIRED_UNVERIFIED":
+            try:
+                validate_url(str(item.get("source_url", "")))
+            except (ValueError, TypeError) as exc:
+                raise ValueError("Acquired evidence requires an official HTTPS source") from exc
+            digest = item.get("document_sha256")
+            if not isinstance(digest, str) or len(digest) != 64 or any(
+                char not in "0123456789abcdefABCDEF" for char in digest
+            ):
+                raise ValueError("Acquired evidence requires a valid SHA256 digest")
         checked.append({**{k: v for k, v in zip(KEYS, key)},
                         "acquisition_status": str(item["acquisition_status"]).strip().upper(),
                         "source_url": str(item.get("source_url", "")).strip(),
