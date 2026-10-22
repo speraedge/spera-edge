@@ -112,10 +112,10 @@ class ShortlistAuditTests(unittest.TestCase):
                     {**second_financial, "revenue": "201", "document_sha256": digest},
                 ], session=Session(200))
         reviews = {row["symbol"]: row for row in result["review"]}
-        self.assertEqual(reviews["ABC"]["reconciliation"]["value_status"],
-                         "VALUES_MATCH_UNVERIFIED_TRANSCRIPTION")
-        self.assertEqual(reviews["DEF"]["reconciliation"]["value_status"],
-                         "SOURCE_VALUE_MISMATCH")
+        self.assertEqual(reviews["ABC"]["reconciliation"].get("value_status"),
+                         "VALUES_MATCH_UNVERIFIED_TRANSCRIPTION", reviews)
+        self.assertEqual(reviews["DEF"]["reconciliation"].get("value_status"),
+                         "SOURCE_VALUE_MISMATCH", reviews)
         for row in reviews.values():
             self.assertEqual(row["reconciliation"]["identity_status"],
                              "FULL_IDENTITY_VERIFIED")
