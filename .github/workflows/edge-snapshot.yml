@@ -27,6 +27,20 @@ jobs:
         run: python -m tools.publish_edge_snapshot
       - name: Validate complete snapshot files and metadata
         run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
+      - name: Enforce latest completed NSE session before live publication
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          from edge_core.ohlcv_integrity import snapshot_is_fresh
+          meta = json.loads(Path("data/latest/metadata.json").read_text())
+          now = datetime.now(ZoneInfo("Asia/Kolkata"))
+          if not snapshot_is_fresh(meta["last_session"], now):
+              raise SystemExit("STALE_PROVIDER_SNAPSHOT: refusing D1 and repository publication")
+          print("Latest completed session verified:", meta["last_session"])
+          PY
       - name: Publish dated current official membership and benchmark research
         env:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
