@@ -28,7 +28,9 @@ def reconcile_statement_documents(financials_csv, document_review_csv, output_di
                str(record["basis"]).strip().upper(), str(record.get("published_on", "")).strip(),
                str(record["source_url"]).strip())
         matches = index.get(key, [])
-        if not matches:
+        if not all(key):
+            status = "INCOMPLETE_FILING_IDENTITY"
+        elif not matches:
             status = "MISSING_MATCHING_FILING"
         elif len(matches) != 1:
             status = "AMBIGUOUS_FILING_MATCH"
