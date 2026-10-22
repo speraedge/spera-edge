@@ -1,8 +1,12 @@
 """Cross-module shortlist-to-filing-audit smoke tests; no external network."""
+import hashlib
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 from tools.shortlist_financial_audit import run_shortlist_financial_audit
+from edge_core.acquisition_review_import import import_acquisition_review, validate_acquisition_import
+from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
 
 C = {"symbol": "ABC", "isin": "INE000A01001"}
 F = {**C, "period_end": "2026-09-30", "period_type": "Q",
@@ -57,6 +61,32 @@ class ShortlistAuditTests(unittest.TestCase):
         result = self.run_case([F], transcriptions=[], code=403)
         self.assertEqual(result["status_counts"], {"HTTP_403": 1})
         self.assertFalse(result["certified"])
+
+    def test_acquisition_to_append_only_ledger_integration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_shortlist_financial_audit(
+                [C], [F], [R], "2026-09-30", Path(tmp),
+                transcriptions=[], session=Session(200))
+            expected = hashlib.sha256(b"%PDF-1.4\\nsynthetic fixture\\n").hexdigest()
+            self.assertEqual(result["review"][0]["document_sha256"], expected)
+            self.assertEqual(result["review"][0]["source_url"], F["source_url"])
+            queue = [{key: R[key] for key in (
+                "symbol", "isin", "period_end", "period_type", "basis")}]
+            self.assertEqual(validate_acquisition_import(result, queue)[0]["document_sha256"], expected)
+            db = sqlite3.connect(":memory:")
+            db.row_factory = sqlite3.Row
+            def query(sql, params=()):
+                cursor = db.execute(sql, params)
+                rows = [dict(row) for row in cursor] if cursor.description else []
+                db.commit()
+                return rows
+            ledger = FinancialEvidenceLedger("test-owner", query)
+            ledger.initialize()
+            first = import_acquisition_review(ledger, queue, result)
+            self.assertEqual(first, import_acquisition_review(ledger, queue, result))
+            self.assertEqual(len(ledger.events()), 1)
+            self.assertEqual(ledger.events()[0]["intake_status"], "REVIEW_REQUIRED")
+            db.close()
 
     def test_pdf_acquisition_still_uncertified(self):
         result = self.run_case([F], transcriptions=[], code=200)
