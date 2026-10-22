@@ -19,11 +19,11 @@ class FilingDocumentTests(unittest.TestCase):
             register = root / "register.csv"
             with register.open("w", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["symbol", "isin", "period_end", "basis", "source_url",
+                writer.writerow(["symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
                                  "document_filename", "expected_sha256"])
-                writer.writerow(["ABC", "INE000A01001", "2026-03-31", "CONSOLIDATED",
+                writer.writerow(["ABC", "INE000A01001", "2026-03-31", "FY", "CONSOLIDATED", "2026-04-30",
                                  "https://nsearchives.nseindia.com/filing.pdf", "report.pdf", digest])
-                writer.writerow(["XYZ", "INE000B01001", "2026-03-31", "CONSOLIDATED",
+                writer.writerow(["XYZ", "INE000B01001", "2026-03-31", "FY", "CONSOLIDATED", "2026-04-30",
                                  "https://nsearchives.nseindia.com/missing.pdf", "missing.pdf", digest])
             summary = audit_filing_documents(register, docs, root / "out")
             self.assertEqual(summary["status_counts"]["REVIEW_ORIGINAL_DOCUMENT"], 1)
@@ -38,16 +38,16 @@ class FilingDocumentTests(unittest.TestCase):
             digest = hashlib.sha256(payload).hexdigest()
             register = root / "register.csv"
             register.write_text(
-                "symbol,isin,period_end,basis,source_url,document_filename,expected_sha256\n"
-                "ABC,INE000A01001,2026-03-31,CONSOLIDATED,https://nsearchives.nseindia.com/report.pdf,report.pdf,"
+                "symbol,isin,period_end,period_type,basis,published_on,source_url,document_filename,expected_sha256\n"
+                "ABC,INE000A01001,2026-03-31,FY,CONSOLIDATED,2026-04-30,https://nsearchives.nseindia.com/report.pdf,report.pdf,"
                 + digest + "\n")
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["INVALID_PDF_DOCUMENT"], 1)
             with register.open("w", newline="") as stream:
                 writer = csv.writer(stream)
-                writer.writerow(["symbol", "isin", "period_end", "basis", "source_url",
+                writer.writerow(["symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
                                  "document_filename", "expected_sha256"])
-                writer.writerow(["ABC", "INE000A01001", "2026-03-31", "CONSOLIDATED",
+                writer.writerow(["ABC", "INE000A01001", "2026-03-31", "FY", "CONSOLIDATED", "2026-04-30",
                                  "https://example.org/report.pdf", "report.pdf", digest])
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["INVALID_OFFICIAL_SOURCE_URL"], 1)
@@ -57,6 +57,6 @@ class FilingDocumentTests(unittest.TestCase):
             root = Path(tmp)
             (root / "report.pdf").write_bytes(b"wrong")
             register = root / "register.csv"
-            register.write_text("symbol,isin,period_end,basis,source_url,document_filename,expected_sha256\nABC,INE000A01001,2026-03-31,CONSOLIDATED,https://nsearchives.nseindia.com/filing.pdf,report.pdf," + "a" * 64 + "\n")
+            register.write_text("symbol,isin,period_end,period_type,basis,published_on,source_url,document_filename,expected_sha256\nABC,INE000A01001,2026-03-31,FY,CONSOLIDATED,2026-04-30,https://nsearchives.nseindia.com/filing.pdf,report.pdf," + "a" * 64 + "\n")
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["DOCUMENT_HASH_MISMATCH"], 1)
