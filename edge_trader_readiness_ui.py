@@ -35,6 +35,4 @@ def render_trader_readiness(leadership, membership, setups, period_end, *,
     frame = pd.DataFrame(rows)
     st.dataframe(numbered(frame), use_container_width=True)
     export_section("Integrated readiness", frame, "integrated_readiness")
-    st.download_button("Download integrated readiness review", frame.to_csv(index=False),
-                       "edge_trading_readiness_review.csv", "text/csv")
     st.warning("All candidates remain REVIEW_REQUIRED pending independent evidence and trade confirmation.")
