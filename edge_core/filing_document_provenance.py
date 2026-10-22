@@ -8,6 +8,15 @@ import hashlib
 import json
 from collections import Counter
 from pathlib import Path
+from tools.acquire_official_filings import validate_url
+
+
+def _trusted_source(url):
+    try:
+        validate_url(url)
+        return True
+    except (ValueError, TypeError):
+        return False
 
 
 def audit_filing_documents(register_csv, documents_dir, output_dir):
@@ -30,8 +39,8 @@ def audit_filing_documents(register_csv, documents_dir, output_dir):
         digest = ""
         if key in seen:
             status = "DUPLICATE_FILING_IDENTITY"
-        elif not str(item["source_url"]).startswith("https://"):
-            status = "MISSING_SOURCE_URL"
+        elif not _trusted_source(item["source_url"]):
+            status = "INVALID_OFFICIAL_SOURCE_URL"
         elif not name or Path(name).name != name or name in (".", ".."):
             status = "INVALID_DOCUMENT_FILENAME"
         elif len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
@@ -44,6 +53,8 @@ def audit_filing_documents(register_csv, documents_dir, output_dir):
                 digest = hashlib.sha256(file.read_bytes()).hexdigest()
                 if digest != expected:
                     status = "DOCUMENT_HASH_MISMATCH"
+                elif not file.read_bytes().startswith(b"%PDF-"):
+                    status = "INVALID_PDF_DOCUMENT"
         seen.add(key)
         findings.append({"row": number, "symbol": item["symbol"], "isin": item["isin"],
                          "period_end": item["period_end"], "basis": item["basis"],
