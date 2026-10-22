@@ -2,10 +2,19 @@
 import math
 import pandas as pd
 
-def decision_outcomes(decisions, close, horizon=10):
-    if horizon < 1 or close.index.has_duplicates or not close.index.is_monotonic_increasing:
+def decision_outcomes(decisions, close, horizon=10, *, as_of=None):
+    if (type(horizon) is not int or horizon < 1 or close.columns.has_duplicates
+            or close.index.has_duplicates or not close.index.is_monotonic_increasing):
         raise ValueError("Invalid horizon or market sessions")
     dates = pd.to_datetime(close.index)
+    if dates.isna().any() or dates.has_duplicates:
+        raise ValueError('Invalid market session dates')
+    if as_of is not None:
+        cutoff = pd.Timestamp(as_of)
+        if pd.isna(cutoff):
+            raise ValueError('Invalid observation cutoff')
+        close = close.loc[dates <= cutoff]
+        dates = dates[dates <= cutoff]
     rows = []
     for decision in decisions:
         symbol = decision["symbol"]
