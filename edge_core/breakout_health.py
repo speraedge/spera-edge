@@ -16,10 +16,8 @@ def breakout_health(close, high, volume, *, horizon=10, lookback=80, volume_mult
         raise ValueError("Aligned OHLCV required")
     if close.index.has_duplicates or close.columns.has_duplicates or not close.index.is_monotonic_increasing:
         raise ValueError("Unique sorted sessions and symbols required")
-    if not 1 <= horizon <= 60 or not 1 <= lookback <= 252 or volume_multiple <= 0:
+    if not 1 <= horizon <= 60 or not 1 <= lookback <= 252 or not np.isfinite(volume_multiple) or volume_multiple <= 0:
         raise ValueError("Invalid research parameters")
-    if low is not None and ((pd.to_numeric(low.stack(), errors="coerce") < 0).any()):
-        raise ValueError("Invalid low prices")
     events = []
     if len(close) < 52:
         return {"qualified": 0, "resolved": 0, "successes": 0, "failures": 0,
@@ -46,15 +44,21 @@ def breakout_health(close, high, volume, *, horizon=10, lookback=80, volume_mult
             if baseline <= 0 or c.iloc[i] <= pivot or v.iloc[i] < baseline * volume_multiple:
                 continue
             last_event = i
-            stop = float(lows.iloc[i-10:i].min()) if lows is not None else None
+            stop_window = lows.iloc[i-10:i] if lows is not None else None
+            stop = float(stop_window.min()) if stop_window is not None and np.isfinite(stop_window).all() and (stop_window > 0).all() else None
             resolved = i + horizon < len(c)
             outcome = "UNRESOLVED"
             future = None
             stop_breached = None
+            first_stop_session = None
             if resolved:
                 if lows is not None:
                     path = lows.iloc[i+1:i+horizon+1]
-                    stop_breached = bool(np.isfinite(path).all() and np.isfinite(stop) and (path <= stop).any()) if np.isfinite(path).all() and np.isfinite(stop) else None
+                    if stop is not None and np.isfinite(path).all() and (path > 0).all():
+                        breached = path <= stop
+                        stop_breached = bool(breached.any())
+                        if stop_breached:
+                            first_stop_session = str(pd.Timestamp(path.index[np.flatnonzero(breached.to_numpy())[0]]).date())
                 future = float(c.iloc[i+horizon])
                 if not np.isfinite(future) or future <= 0:
                     outcome = "UNRESOLVED"
@@ -66,9 +70,10 @@ def breakout_health(close, high, volume, *, horizon=10, lookback=80, volume_mult
                            "Pivot": pivot, "Breakout_Close": float(c.iloc[i]),
                            "Volume_Ratio": float(v.iloc[i] / baseline),
                            "Evaluation_Close": future, "Stop": stop,
-                           "Stop_Breached": stop_breached, "Outcome": outcome})
+                           "Stop_Breached": stop_breached, "First_Stop_Session": first_stop_session,
+                           "Outcome": outcome})
     frame = pd.DataFrame(events, columns=["Symbol", "Session", "Pivot", "Breakout_Close",
-                                         "Volume_Ratio", "Evaluation_Close", "Stop", "Stop_Breached", "Outcome"])
+                                         "Volume_Ratio", "Evaluation_Close", "Stop", "Stop_Breached", "First_Stop_Session", "Outcome"])
     successes = int((frame["Outcome"] == "SUCCESS").sum())
     breaches = int((frame["Outcome"] == "STOP_BREACH").sum())
     failures = int((frame["Outcome"] == "FAILURE").sum()) + breaches
@@ -77,3 +82,24 @@ def breakout_health(close, high, volume, *, horizon=10, lookback=80, volume_mult
             "failures": failures, "stop_breaches": breaches, "unresolved": len(frame)-resolved,
             "success_rate_pct": round(100*successes/resolved, 1) if resolved else None,
             "events": frame}
+
+
+def breakout_horizon_comparison(close, high, volume, *, low, horizons=(5, 10, 20), lookback=80):
+    """Compare independently evaluated fixed-horizon research cohorts.
+
+    Each horizon has its own event cooldown and may therefore have a different
+    denominator; rates must not be interpreted as the same trade cohort.
+    """
+    if not horizons or len(set(horizons)) != len(horizons):
+        raise ValueError("Distinct horizons required")
+    rows = []
+    for horizon in horizons:
+        result = breakout_health(close, high, volume, low=low,
+                                 horizon=horizon, lookback=lookback)
+        rows.append({"Horizon_Sessions": horizon,
+                     "Qualified": result["qualified"], "Resolved": result["resolved"],
+                     "Successes": result["successes"], "Failures": result["failures"],
+                     "Stop_Breaches": result["stop_breaches"],
+                     "Unresolved": result["unresolved"],
+                     "Success_Rate_Pct": result["success_rate_pct"]})
+    return pd.DataFrame(rows)
