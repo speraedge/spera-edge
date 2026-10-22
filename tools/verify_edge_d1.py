@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from edge_core.d1_store import d1_query
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
+from edge_core.acquisition_review_import import import_acquisition_review
 
 
 def verify(query, *, live=False):
@@ -36,7 +37,22 @@ def verify(query, *, live=False):
                if r["event_id"] == event_id]
     if len(own) != 1 or foreign or own[0]["intake_status"] != "QUARANTINED_UNVERIFIED":
         raise RuntimeError("Live owner isolation or idempotency verification failed")
+    reconciliation = dict(queue[0], acquisition_status="HTTP_403", certified=False)
+    payload = {"review": [reconciliation], "certified": False,
+               "ready_for_trading_signals": False}
+    imported = import_acquisition_review(ledger, queue, payload)
+    replayed = import_acquisition_review(ledger, queue, payload)
+    if imported != replayed:
+        raise RuntimeError("Reconciliation replay mismatch")
+    records = [r for r in ledger.events() if r["event_id"] == imported[0]]
+    foreign_records = [r for r in FinancialEvidenceLedger(other, query).events()
+                       if r["event_id"] == imported[0]]
+    if len(records) != 1 or foreign_records or records[0]["intake_status"] != "REVIEW_REQUIRED":
+        raise RuntimeError("Reconciliation owner isolation or quarantine failed")
+    if json.loads(records[0]["payload_json"]).get("certified") is not False:
+        raise RuntimeError("Reconciliation certification invariant failed")
     return {"status": "PASS", "live": True, "quarantined": True,
+            "reconciliation_review_required": True, "reconciliation_idempotency": True,
             "owner_isolation": True, "idempotency": True,
             "certified": False, "synthetic_event_id": event_id}
 
