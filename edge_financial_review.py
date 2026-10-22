@@ -71,7 +71,12 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
                                  event_id=st.session_state["edge_financial_event_id"])
             st.session_state["edge_financial_event_id"] = str(uuid.uuid4())
             st.success("Evidence saved as QUARANTINED_UNVERIFIED; not certified.")
-        st.dataframe(ledger.events(), use_container_width=True)
+        history = ledger.events()
+        if history:
+            st.caption("Private append-only evidence history (owner-scoped)")
+            st.dataframe(history, use_container_width=True)
+        else:
+            st.info("No financial evidence submissions recorded yet.")
     except (ValueError, KeyError, TypeError) as exc:
         st.error("Evidence review blocked: " + str(exc))
     except Exception:
