@@ -53,18 +53,22 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
         manifest = json.loads((out / "audit" / "documents" / "acquisition_manifest.json").read_text())
         for document in manifest["documents"]:
             key = (document["symbol"].strip().upper(), document["isin"].strip().upper(),
-                   document["period_end"])
+                   document["period_end"], document.get("period_type", "").strip().upper(),
+                   document.get("basis", "").strip().upper())
             raw_status = document["status"]
             status = raw_status if raw_status in (
                 "ACQUIRED_UNVERIFIED", "HTTP_403", "HTTP_429", "HTTP_ERROR"
             ) else "REVIEW_REQUIRED"
+            if key in acquired:
+                raise ValueError("Duplicate acquired filing identity")
             acquired[key] = {
                 "acquisition_status": status,
                 "source_url": document.get("source_url", ""),
                 "document_sha256": document.get("sha256", ""),
             }
     for decision in bridge["review"]:
-        key = (decision["symbol"], decision["isin"], decision["period_end"])
+        key = (decision["symbol"], decision["isin"], decision["period_end"],
+               decision["period_type"], decision["basis"])
         evidence = acquired.get(key, {})
         full_key = (decision["symbol"], decision["isin"], decision["period_end"],
                     decision["period_type"], decision["basis"])
