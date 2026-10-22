@@ -30,6 +30,21 @@ class ImportTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_acquisition_import(value, Q)
 
+    def test_acquired_requires_official_source_and_sha256(self):
+        base = {**O, "acquisition_status": "ACQUIRED_UNVERIFIED"}
+        valid = {**base, "source_url": "https://www.nseindia.com/filing.pdf",
+                 "document_sha256": "a" * 64}
+        self.assertEqual(validate_acquisition_import({**P, "review": [valid]}, Q)[0]["document_sha256"], "a" * 64)
+        for invalid in (
+            base,
+            {**valid, "source_url": "https://example.com/filing.pdf"},
+            {**valid, "document_sha256": ""},
+            {**valid, "document_sha256": "z" * 64},
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    validate_acquisition_import({**P, "review": [invalid]}, Q)
+
     def test_idempotent_import(self):
         db = sqlite3.connect(":memory:")
         db.row_factory = sqlite3.Row
