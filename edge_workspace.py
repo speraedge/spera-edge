@@ -240,6 +240,7 @@ def render_market(close):
     st.caption('Defensive: either breadth below 40%; broad participation: both at least 60%; otherwise mixed. Requires 90% 200-session coverage. This is not a benchmark regime or a trading signal.')
     st.write({key: value for key, value in report.items() if key != 'history'})
     st.line_chart(report['history'][['Above_50_Pct', 'Above_200_Pct']])
+    export_section('Market breadth history', report['history'].reset_index(), 'market_breadth_history')
     st.caption('20-session change measures breadth expansion/deterioration in percentage points. Historical breadth uses today’s available universe and has survivorship limitations.')
 
 
