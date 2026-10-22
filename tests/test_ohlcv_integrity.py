@@ -70,5 +70,23 @@ class OhlcvIntegrityTests(unittest.TestCase):
             self.check()
 
 
+    def test_official_budget_session_is_not_discarded(self):
+        for frame in (self.close, self.high, self.low, self.volume):
+            frame.index = pd.to_datetime(['2026-01-30', '2026-02-01'])
+        result = audit_ohlcv(self.close, self.high, self.low, self.volume)
+        self.assertEqual(result['verified_special_sessions'], ['2026-02-01'])
+
+    def test_snapshot_freshness_requires_latest_expected_completed_session(self):
+        from edge_core.ohlcv_integrity import snapshot_is_fresh
+        cases = [('2026-10-21', '2026-10-22T15:00:00+05:30', True),
+                 ('2026-10-21', '2026-10-22T16:00:00+05:30', False),
+                 ('2026-10-22', '2026-10-22T15:00:00+05:30', False),
+                 ('2026-10-23', '2026-10-25T18:00:00+05:30', True),
+                 ('2026-02-01', '2026-02-01T16:00:00+05:30', True)]
+        for session, now, expected in cases:
+            with self.subTest(session=session, now=now):
+                self.assertEqual(snapshot_is_fresh(session, pd.Timestamp(now)), expected)
+
+
 if __name__ == "__main__":
     unittest.main()
