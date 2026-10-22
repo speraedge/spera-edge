@@ -88,13 +88,14 @@ def review_comparability(financials_csv, output_dir):
             status = "INVALID_PERIOD_OR_VALUES"
         findings.append({"row": line, "symbol": record["symbol"], "isin": isin,
                          "period_type": kind, "basis": basis, "period_end": period,
+                         "source_url": record["source_url"], "published_on": record["published_on"],
                          "prior_period_end": previous, "status": status,
                          "revenue_growth_candidate_pct": revenue_growth,
                          "pat_growth_candidate_pct": pat_growth, "certified": False})
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     fields = ["row", "symbol", "isin", "period_type", "basis", "period_end",
-              "prior_period_end", "status", "revenue_growth_candidate_pct",
+              "source_url", "published_on", "prior_period_end", "status", "revenue_growth_candidate_pct",
               "pat_growth_candidate_pct", "certified"]
     with (out / "financial_comparability.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
