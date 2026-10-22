@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 from edge_core.corporate_action_evidence import review_events
 from edge_core.financial_evidence import review_financials
+from edge_core.financial_comparability import review_comparability
 from edge_core.historical_evidence_coverage import audit_coverage
 from edge_core.action_coverage_reconciliation import reconcile_action_coverage
 
@@ -45,6 +46,7 @@ def main():
         result["corporate_actions"] = review_events(args.corporate_actions, out / "actions", identities)
     if args.financials:
         result["financials"] = review_financials(args.financials, out / "financials", identities)
+        result["financial_comparability"] = review_comparability(args.financials, out / "comparability")
     if args.coverage_register:
         result["historical_coverage"] = audit_coverage(args.coverage_register, args.coverage_start,
                                                        args.coverage_end, out / "coverage")
