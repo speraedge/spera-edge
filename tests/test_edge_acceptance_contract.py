@@ -28,7 +28,11 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         )
         offsets = [workflow.index(step) for step in steps]
         self.assertEqual(offsets, sorted(offsets))
-        self.assertIn("0 14 * * 1-5", workflow)
+        self.assertIn("30 1,2,3 * * 2-6", workflow)
+        freshness = "Enforce latest completed NSE session before live publication"
+        self.assertIn(freshness, workflow)
+        self.assertLess(workflow.index("Validate complete snapshot files and metadata"), workflow.index(freshness))
+        self.assertLess(workflow.index(freshness), workflow.index("Publish validated leadership research to EDGE D1"))
         self.assertIn("if ! git diff --cached --quiet", workflow)
 
     def test_snapshot_validation_requires_no_certified_research(self):
