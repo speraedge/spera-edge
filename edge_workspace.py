@@ -241,7 +241,6 @@ def render_market(close):
     st.write({key: value for key, value in report.items() if key != 'history'})
     st.line_chart(report['history'][['Above_50_Pct', 'Above_200_Pct']])
     st.caption('20-session change measures breadth expansion/deterioration in percentage points. Historical breadth uses today’s available universe and has survivorship limitations.')
-    st.download_button('Download market breadth history', report['history'].to_csv(), 'edge_market_breadth.csv', 'text/csv')
 
 
 def leadership_evidence(levels, close, directory=None):
@@ -291,7 +290,6 @@ def render_industries(directory, close):
         st.caption(f"Official NSE membership fetched {evidence['fetched_utc']}; price session {close.index[-1].date()}. Equal-member research, not sector-index returns. Unknown classifications are not certified.")
         st.dataframe(numbered(industries), use_container_width=True)
         export_section('Industry research', industries, 'industry_research')
-        st.download_button('Download current industry research', industries.to_csv(index=False), 'edge_current_industries.csv', 'text/csv')
     except (OSError, ValueError, KeyError, TypeError):
         st.info('Current authoritative industry evidence unavailable. Archived sector rankings remain historical only.')
 
@@ -303,7 +301,6 @@ def render_entries(close, high, low, volume, last_session):
     st.caption('Pivot: highest high of 20 prior sessions; volume: at least 1.5× prior 50-session mean. Stop: prior 10-session low. VCP diagnostic: shrinking disjoint 20/10/5-session ranges, final range ≤8%. These are research heuristics, not certified SEPA signals. Gaps and slippage can exceed stop risk.')
     st.dataframe(numbered(table), use_container_width=True)
     export_section('Entry diagnostics', table, 'entry_diagnostics')
-    st.download_button('Download entry diagnostics CSV', table.to_csv(index=False), 'edge_entry_diagnostics.csv', 'text/csv')
     eligible = table.loc[table['Evidence'].eq('COMPLETED_SESSION_RESEARCH')]
     if not eligible.empty:
         watch = st.multiselect('Candidate watchlist', eligible['Symbol'].tolist())
@@ -372,7 +369,6 @@ def render_private_portfolio(close, snapshot_usable):
         if not summary['marks_complete']:
             st.warning('Missing or stale marks: exposure, unrealized P&L and risk are unavailable. New-entry sizing is disabled.')
         if not positions.empty:
-            st.download_button('Export private positions', positions.to_csv(index=False), 'edge_private_positions.csv', 'text/csv')
         capital = st.number_input('Account equity (INR)', min_value=1.0, value=500000.0)
         risk_pct = st.number_input('Permitted risk per trade (%)', min_value=0.1, max_value=5.0, value=1.0)
         heat = st.number_input('Portfolio risk ceiling (%)', min_value=0.1, max_value=10.0, value=5.0)
@@ -417,7 +413,6 @@ def render_private_portfolio(close, snapshot_usable):
             history = pd.DataFrame(events)
             st.dataframe(numbered(history), use_container_width=True)
             export_section('Private trade journal', history, 'private_trade_journal')
-            st.download_button('Export private transactions and review history', history.to_csv(index=False), 'edge_private_ledger.csv', 'text/csv')
     except Exception:
         st.error('Private ledger unavailable. No write success is assumed; retry after checking EDGE D1 configuration.')
 
