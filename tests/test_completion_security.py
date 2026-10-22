@@ -74,6 +74,64 @@ class CompletionSecurityTests(unittest.TestCase):
         text = ' '.join(cell.getPlainText() if hasattr(cell, 'getPlainText') else str(cell) for cell in cells)
         self.assertIn('END_PRIVATE_NOTE', text)
 
+    def test_only_selected_export_format_is_generated(self):
+        from unittest.mock import MagicMock, patch
+        from edge_exports import export_section
+        with patch('edge_exports.st') as ui, patch('edge_exports.export_bytes', return_value=b'csv') as exporter:
+            ui.selectbox.return_value = 'CSV'
+            ui.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+            export_section('Synthetic', pd.DataFrame({'Value': [1]}), 'synthetic')
+        self.assertEqual(exporter.call_count, 1)
+        self.assertEqual(exporter.call_args.args[1], 'CSV')
+
+    def test_legacy_membership_blocks_readiness_with_clear_warning(self):
+        from unittest.mock import patch
+        from edge_trader_readiness_ui import render_trader_readiness
+        with patch('edge_trader_readiness_ui.st') as ui:
+            leadership = pd.DataFrame({'Symbol': ['SYNTHETIC'], 'Data_Quality': ['REVIEW'],
+                                       'Ret_6M': [.2], 'Ret_12M': [.4], 'AnnVol': [.2]})
+            render_trader_readiness(leadership, pd.DataFrame({'Symbol': ['SYNTHETIC']}),
+                                   pd.DataFrame(), '2026-09-30', snapshot_fresh=True)
+        self.assertTrue(ui.warning.called)
+        self.assertFalse(ui.error.called)
+
+    def test_research_to_manual_trade_and_review_never_infers_a_fill(self):
+        import json
+        from edge_workspace import market_report, entry_diagnostics, plan_quantity
+        from edge_core.momentum_v1 import apply_frozen_v1_scores
+        from edge_core.leadership_levels import classify_leadership
+        from edge_core.setup_decisions import validate_decision
+        from edge_core.decision_outcomes import decision_outcomes
+        from edge_core.decision_links import validate_trade_link
+        from edge_core.trade_review import journal_quality
+        dates = pd.bdate_range('2025-01-01', periods=260)
+        close = pd.DataFrame({'SYNTHETIC': range(100, 360)}, index=dates, dtype=float)
+        self.assertEqual(market_report(close)['latest_coverage'], 1)
+        ranks = apply_frozen_v1_scores(pd.DataFrame({'Symbol': ['SYNTHETIC'],
+            'Data_Quality': ['REVIEW'], 'Ret_6M': [.2], 'Ret_12M': [.4], 'AnnVol': [.2]}))
+        self.assertFalse(classify_leadership(ranks, close)['SEPA_Certified'].any())
+        entries = entry_diagnostics(close, close + 1, close - 1, close * 0 + 1000, dates[-1])
+        self.assertFalse(entries['SEPA_Certified'].any())
+        self.assertGreater(plan_quantity(100000, 1, 100, 90, 0, 0)['quantity'], 0)
+        payload = validate_decision('SYNTHETIC', str(dates[250].date()), 'TAKE', 'OTHER', 'Synthetic workflow test')
+        self.query('INSERT INTO edge_setup_decisions VALUES (?,?,?,?)',
+                   ('synthetic-owner', 'decision', 'synthetic-created-time', json.dumps(payload)))
+        decisions = [dict(payload, decision_id='decision')]
+        observation = decision_outcomes(decisions, close, 2).iloc[0]
+        self.assertEqual(observation['Observation'], 'OBSERVED')
+        self.assertEqual(self.ledger.events(), [])
+        self.assertTrue(self.ledger.report({})[0].empty)
+        self.ledger.append('BUY', 'SYNTHETIC', quantity=10, price=100, stop=90, note='Explicit test fill', event_id='buy')
+        validate_trade_link(decisions, self.ledger.events(), 'decision', 'buy')
+        self.query('INSERT INTO edge_decision_trade_links VALUES (?,?,?,?)',
+                   ('synthetic-owner', 'decision', 'buy', 'synthetic-created-time'))
+        self.ledger.append('SELL', 'SYNTHETIC', quantity=4, price=110, fee=2)
+        positions, actual = self.ledger.report({'SYNTHETIC': 105})
+        self.assertEqual(positions.iloc[0]['Quantity'], 6)
+        self.assertEqual(actual['realized'], 38)
+        self.assertEqual(actual['unrealized'], 30)
+        self.assertEqual(journal_quality(self.ledger.events()).iloc[0]['Review_Status'], 'DOCUMENTED_BUYS')
+
     def test_two_competing_exits_cannot_oversell(self):
         from concurrent.futures import ThreadPoolExecutor
         from pathlib import Path
