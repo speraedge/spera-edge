@@ -5,7 +5,6 @@ not a historical NIFTY membership reconstruction or an executable backtest.
 """
 import numpy as np
 import pandas as pd
-from edge_core.breakout_health import breakout_health
 
 
 def replay_breakout_rules(close, high, low, volume, *, start=None, end=None,
@@ -23,36 +22,38 @@ def replay_breakout_rules(close, high, low, volume, *, start=None, end=None,
     upper = pd.Timestamp(end) if end is not None else dates[-1]
     if lower > upper:
         raise ValueError("Start after end")
+    # Scan each symbol once; prior pivots and volume baselines are shifted to
+    # exclude the candidate session, avoiding repeated full-universe replays.
     records = []
-    for i in range(50, len(dates)):
-        if not lower <= dates[i] <= upper:
-            continue
-        # The prefix is the only price data the signal detection can inspect.
-        prefix = slice(0, i+1)
-        candidate = breakout_health(close.iloc[prefix], high.iloc[prefix],
-                                    volume.iloc[prefix], low=low.iloc[prefix],
-                                    horizon=horizon, lookback=1,
-                                    volume_multiple=volume_multiple)["events"]
-        if candidate.empty:
-            continue
-        for _, event in candidate.iterrows():
-            symbol = event["Symbol"]
-            future = close[symbol].iloc[i+horizon] if i+horizon < len(close) else np.nan
-            path = pd.to_numeric(low[symbol].iloc[i+1:i+horizon+1], errors="coerce")
-            stop = event["Stop"]
-            outcome = "UNRESOLVED"
-            first_stop = None
-            if i+horizon < len(close) and pd.notna(future) and np.isfinite(future) and future > 0:
-                if stop is not None and np.isfinite(stop) and len(path) == horizon and np.isfinite(path).all() and (path > 0).all():
-                    breaches = path <= stop
-                    if breaches.any():
-                        outcome = "STOP_BREACH"
-                        first_stop = str(pd.Timestamp(path.index[np.flatnonzero(breaches.to_numpy())[0]]).date())
-                    else:
-                        outcome = "SUCCESS" if future > event["Breakout_Close"] and future >= event["Pivot"] else "FAILURE"
-            records.append({"Symbol": symbol, "Session": event["Session"],
-                            "Pivot": event["Pivot"], "Breakout_Close": event["Breakout_Close"],
-                            "Volume_Ratio": event["Volume_Ratio"], "Stop": stop,
-                            "Outcome": outcome, "First_Stop_Session": first_stop})
+    for symbol in close.columns:
+        c = pd.to_numeric(close[symbol], errors="coerce")
+        h = pd.to_numeric(high[symbol], errors="coerce")
+        l = pd.to_numeric(low[symbol], errors="coerce")
+        v = pd.to_numeric(volume[symbol], errors="coerce")
+        pivot = h.shift(1).rolling(20, min_periods=20).max()
+        baseline = v.shift(1).rolling(50, min_periods=50).mean()
+        stop = l.shift(1).rolling(10, min_periods=10).min()
+        prior_valid = (c.gt(0) & h.gt(0) & v.ge(0)).shift(1).rolling(50, min_periods=50).sum().eq(50)
+        prior_lows_valid = l.shift(1).gt(0).rolling(10, min_periods=10).sum().eq(10)
+        candidates = c.gt(pivot) & v.ge(baseline * volume_multiple) & baseline.gt(0) & prior_valid & prior_lows_valid
+        candidates &= c.gt(0) & h.ge(c) & l.gt(0) & l.le(c) & v.ge(0)
+        for i in np.flatnonzero(candidates.to_numpy()):
+            if i < 50 or not lower <= dates[i] <= upper:
+                continue
+            future = c.iloc[i+horizon] if i+horizon < len(c) else np.nan
+            path = l.iloc[i+1:i+horizon+1]
+            outcome, first_stop = "UNRESOLVED", None
+            if i+horizon < len(c) and np.isfinite(future) and future > 0 and len(path) == horizon and np.isfinite(path).all() and path.gt(0).all():
+                breaches = path <= stop.iloc[i]
+                if breaches.any():
+                    outcome = "STOP_BREACH"
+                    first_stop = str(pd.Timestamp(path.index[np.flatnonzero(breaches.to_numpy())[0]]).date())
+                else:
+                    outcome = "SUCCESS" if future > c.iloc[i] and future >= pivot.iloc[i] else "FAILURE"
+            records.append({"Symbol": symbol, "Session": str(dates[i].date()),
+                            "Pivot": float(pivot.iloc[i]), "Breakout_Close": float(c.iloc[i]),
+                            "Volume_Ratio": float(v.iloc[i] / baseline.iloc[i]),
+                            "Stop": float(stop.iloc[i]), "Outcome": outcome,
+                            "First_Stop_Session": first_stop})
     return pd.DataFrame(records, columns=["Symbol", "Session", "Pivot", "Breakout_Close",
                                           "Volume_Ratio", "Stop", "Outcome", "First_Stop_Session"])
