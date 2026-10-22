@@ -86,6 +86,7 @@ class ShortlistAuditTests(unittest.TestCase):
             self.assertEqual(first, import_acquisition_review(ledger, queue, result))
             self.assertEqual(len(ledger.events()), 1)
             self.assertEqual(ledger.events()[0]["intake_status"], "REVIEW_REQUIRED")
+            self.assertEqual(db.execute("SELECT source_sha256 FROM edge_financial_evidence_events").fetchone()[0], expected)
             db.close()
 
     def test_multi_company_mixed_sources_stay_quarantined(self):
