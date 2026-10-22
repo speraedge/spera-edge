@@ -336,6 +336,34 @@ with tabs[2]:
                 candidates=compute_setup_scanner(close,volume,high_df=high,low_df=low)
                 st.dataframe(numbered(candidates), use_container_width=True)
                 export_section("VCP research candidates", candidates, "vcp_candidates")
+                with st.expander("Candidate historical breakout evidence", expanded=False):
+                    st.caption("Read-only technical outcomes for current setup candidates. "
+                               "This is not a forecast, a VCP backtest, or an executable return study.")
+                    if st.button("Check candidate breakout history", key="edge_candidate_replay"):
+                        symbols = candidates["Symbol"].dropna().astype(str).unique().tolist() if "Symbol" in candidates else []
+                        symbols = [s for s in symbols if s in close.columns]
+                        if not symbols:
+                            st.info("No current candidates with aligned historical OHLCV.")
+                        else:
+                            with st.spinner("Checking historical technical outcomes..."):
+                                research = replay_breakout_rules(
+                                    close[symbols], high[symbols], low[symbols], volume[symbols],
+                                    start=close.index[max(0, len(close)-252)])
+                            st.session_state["edge_candidate_history"] = research
+                            st.session_state["edge_candidate_symbols"] = symbols
+                    candidate_history = st.session_state.get("edge_candidate_history")
+                    if candidate_history is not None:
+                        st.caption("Last evaluated candidate symbols: " +
+                                   str(len(st.session_state.get("edge_candidate_symbols", []))) +
+                                   ". Re-run after refreshing the snapshot or candidate list.")
+                        if not candidate_history.empty:
+                            counts = candidate_history.groupby(["Symbol", "Outcome"]).size().unstack(fill_value=0)
+                            st.dataframe(numbered(counts.reset_index()), use_container_width=True)
+                        else:
+                            st.info("No qualifying historical breakout events for this candidate cohort.")
+                        export_section("Candidate breakout history", candidate_history,
+                                       "edge_candidate_breakout_history")
+
                 membership_file = SNAPSHOT_DIR / "current_membership.csv"
                 provenance_file = SNAPSHOT_DIR / "evidence.json"
                 leadership_frame = snapshot_table("leadership")
