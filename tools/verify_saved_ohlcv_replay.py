@@ -51,6 +51,10 @@ def run(root=Path("data/latest"), output_dir=None):
         result.sort_values(["Session", "Symbol"]).to_csv(destination / "breakout_events.csv", index=False)
         (destination / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
         (destination / "provenance.json").write_text(json.dumps({
+            "artifact_sha256": {
+                name: hashlib.sha256((destination / name).read_bytes()).hexdigest()
+                for name in ('summary.json', 'breakout_events.csv')
+            },
             "snapshot_sha256": snapshot_fingerprints,
             "snapshot_session": meta["last_session"],
             "snapshot_generated_utc": meta.get("generated_utc"),
