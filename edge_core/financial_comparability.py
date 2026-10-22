@@ -67,7 +67,10 @@ def review_comparability(financials_csv, output_dir):
                 earlier_revenue = Decimal(str(earlier["revenue"]))
                 earlier_pat = Decimal(str(earlier["pat"]))
                 if (current_published < date.fromisoformat(period)
-                    or earlier_published < date.fromisoformat(previous)):
+                    or earlier_published < date.fromisoformat(previous)
+                    or current_published > date.today()
+                    or earlier_published > date.today()
+                    or earlier_published > current_published):
                     status = "INVALID_PUBLICATION_DATE"
                 elif (not all(v.is_finite() for v in
                               (current_revenue, current_pat, earlier_revenue, earlier_pat))
