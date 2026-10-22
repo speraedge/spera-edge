@@ -1,6 +1,8 @@
 """Authenticated operator review. Never upgrades financial records to certified."""
 import uuid
 import json
+import pandas as pd
+from edge_exports import numbered, export_section
 
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
 from edge_core.manual_evidence_queue import build_queue
@@ -51,7 +53,8 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
         if not queue:
             st.info("No evidence review requests for this snapshot.")
             return
-        st.dataframe(queue, use_container_width=True)
+        st.dataframe(numbered(pd.DataFrame(queue)), use_container_width=True)
+        export_section("Financial evidence queue", pd.DataFrame(queue), "financial_evidence_queue")
         ledger = FinancialEvidenceLedger(owner, query)
         ledger.initialize()
         choices = {str(i) + ": " + x["symbol"] + " / " + x["isin"]: x for i, x in enumerate(queue)}
@@ -84,7 +87,8 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
                 imported = json.loads(uploaded.getvalue().decode("utf-8"))
                 eligible = validate_acquisition_import(imported, queue)
                 st.caption(f"{len(eligible)} validated unverified outcomes")
-                st.dataframe(eligible, use_container_width=True)
+                st.dataframe(numbered(pd.DataFrame(eligible)), use_container_width=True)
+                export_section("Acquisition review", pd.DataFrame(eligible), "acquisition_review")
                 if st.button("Append validated unverified review events"):
                     events = import_acquisition_review(ledger, queue, imported)
                     st.success(f"{len(events)} review events recorded or safely replayed; not certified.")
@@ -93,7 +97,8 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
         history = ledger.events()
         if history:
             st.caption("Private append-only evidence history (owner-scoped)")
-            st.dataframe(history, use_container_width=True)
+            st.dataframe(numbered(pd.DataFrame(history)), use_container_width=True)
+            export_section("Private financial evidence history", pd.DataFrame(history), "private_financial_history")
         else:
             st.info("No financial evidence submissions recorded yet.")
     except (ValueError, KeyError, TypeError) as exc:
