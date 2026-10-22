@@ -45,7 +45,7 @@ def prepare_official_acquisition(shortlist, filings, financial_records, expected
             try:
                 url = validate_url(candidate.get("source_url", ""))
                 published = date.fromisoformat(str(candidate.get("published_on", "")))
-                if published < date.fromisoformat(expected_period_end):
+                if published < date.fromisoformat(expected_period_end) or published > date.today():
                     status = "INVALID_PUBLICATION_DATE"
                 else:
                     record = {k: str(candidate.get(k, "")).strip() for k in REGISTER_FIELDS}
