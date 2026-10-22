@@ -366,7 +366,8 @@ def render_private_portfolio(close, snapshot_usable):
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
-        st.dataframe(positions, use_container_width=True)
+        st.dataframe(numbered(positions), use_container_width=True)
+        export_section('Private positions', positions, 'private_positions')
         st.caption('Average-cost accounting includes entry/exit fees. Unrealized P&L excludes estimated exit costs. Open risk uses latest mark to stop, floored at zero; stops do not guarantee execution.')
         if not summary['marks_complete']:
             st.warning('Missing or stale marks: exposure, unrealized P&L and risk are unavailable. New-entry sizing is disabled.')
@@ -414,7 +415,8 @@ def render_private_portfolio(close, snapshot_usable):
                 st.error(str(exc))
         if events:
             history = pd.DataFrame(events)
-            st.dataframe(history, use_container_width=True)
+            st.dataframe(numbered(history), use_container_width=True)
+            export_section('Private trade journal', history, 'private_trade_journal')
             st.download_button('Export private transactions and review history', history.to_csv(index=False), 'edge_private_ledger.csv', 'text/csv')
     except Exception:
         st.error('Private ledger unavailable. No write success is assumed; retry after checking EDGE D1 configuration.')
