@@ -125,6 +125,43 @@ class ShortlistAuditTests(unittest.TestCase):
                     *result["review"][:1], {**result["review"][1], "certified": True},
                     *result["review"][2:]]}, queue)
 
+    def test_multi_company_import_is_idempotent_and_owner_isolated(self):
+        candidates = [C, {"symbol": "DEF", "isin": "INE000B01002"}]
+        filings = [F, {**F, **candidates[1],
+                       "source_url": "https://nsearchives.nseindia.com/def.pdf"}]
+        records = [{**R, **candidate} for candidate in candidates]
+        class MixedSession:
+            def get(self, url, **kwargs):
+                assert kwargs["allow_redirects"] is False
+                return Response(403 if url.endswith("/def.pdf") else 200)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_shortlist_financial_audit(
+                candidates, filings, records, "2026-09-30", Path(tmp),
+                transcriptions=[], session=MixedSession())
+            queue = [{k: record[k] for k in (
+                "symbol", "isin", "period_end", "period_type", "basis")}
+                for record in records]
+            db = sqlite3.connect(":memory:")
+            db.row_factory = sqlite3.Row
+            def query(sql, params=()):
+                cursor = db.execute(sql, params)
+                rows = [dict(row) for row in cursor] if cursor.description else []
+                db.commit()
+                return rows
+            owner = FinancialEvidenceLedger("owner-one", query)
+            owner.initialize()
+            first = import_acquisition_review(owner, queue, result)
+            self.assertEqual(len(first), 2)
+            self.assertEqual(first, import_acquisition_review(owner, queue, result))
+            self.assertEqual(len(owner.events()), 2)
+            self.assertEqual(FinancialEvidenceLedger("owner-two", query).events(), [])
+            self.assertTrue(all(x["intake_status"] == "REVIEW_REQUIRED" for x in owner.events()))
+            with self.assertRaises(sqlite3.DatabaseError):
+                query("DELETE FROM edge_financial_evidence_events WHERE owner_id=?",
+                      ("owner-one",))
+            self.assertEqual(len(owner.events()), 2)
+            db.close()
+
     def test_pdf_acquisition_still_uncertified(self):
         result = self.run_case([F], transcriptions=[], code=200)
         self.assertEqual(result["status_counts"], {"ACQUIRED_UNVERIFIED": 1})
