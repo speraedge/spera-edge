@@ -31,6 +31,8 @@ jobs:
         env:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
         run: python -m edge_evidence
+      - name: Validate published membership and benchmark evidence
+        run: python -m unittest discover -s tests -p 'test_published_evidence.py' -v
       - name: Publish validated leadership research to EDGE D1
         env:
           EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
