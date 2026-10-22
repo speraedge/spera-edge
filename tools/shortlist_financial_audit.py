@@ -95,10 +95,19 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
             with (review_dir / filename).open(newline="", encoding="utf-8") as stream:
                 for row in csv.DictReader(stream):
                     identity = (row["symbol"].strip().upper(), row.get("period_end", ""))
-                    reconciliation.setdefault(identity, {})[label] = row[field]
+                    slot = reconciliation.setdefault(identity, {})
+                    if label in slot:
+                        slot[label] = "AMBIGUOUS_RECONCILIATION_IDENTITY"
+                    else:
+                        slot[label] = row[field]
     for item in outcomes:
         identity = (item["symbol"], item["period_end"])
         evidence = reconciliation.get(identity, {})
+        # Legacy value-review CSVs omit ISIN and accounting basis. They cannot
+        # establish full identity; never elevate a joined status to signoff.
+        evidence = dict(evidence)
+        if evidence:
+            evidence["identity_status"] = "PARTIAL_IDENTITY_UNVERIFIED"
         item["reconciliation"] = evidence
         item["financial_values_verified"] = False
         item["ready_for_trading_signals"] = False
@@ -109,6 +118,7 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
             and evidence.get("statement_status") == "MATCHED_DOCUMENT_UNCERTIFIED"
             and evidence.get("value_status") == "VALUES_MATCH_UNVERIFIED_TRANSCRIPTION"
             and evidence.get("comparability_status") == "CANDIDATE_COMPARABLE_UNVERIFIED"
+            and evidence.get("identity_status") == "FULL_IDENTITY_VERIFIED"
             else "REVIEW_REQUIRED"
         )
     result = {"candidate_count": len(outcomes), "registered": bridge["registered"],
