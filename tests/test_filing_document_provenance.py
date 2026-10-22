@@ -60,3 +60,28 @@ class FilingDocumentTests(unittest.TestCase):
             register.write_text("symbol,isin,period_end,period_type,basis,published_on,source_url,document_filename,expected_sha256\nABC,INE000A01001,2026-03-31,FY,CONSOLIDATED,2026-04-30,https://nsearchives.nseindia.com/filing.pdf,report.pdf," + "a" * 64 + "\n")
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["DOCUMENT_HASH_MISMATCH"], 1)
+
+    def test_incomplete_and_duplicate_full_identity_are_quarantined(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            payload = b"%PDF-1.4\\nfixture"
+            (root / "report.pdf").write_bytes(payload)
+            digest = hashlib.sha256(payload).hexdigest()
+            register = root / "register.csv"
+            columns = ["symbol", "isin", "period_end", "period_type", "basis",
+                       "published_on", "source_url", "document_filename", "expected_sha256"]
+            common = dict(symbol="ABC", isin="INE000A01001", period_end="2026-03-31",
+                          period_type="FY", basis="CONSOLIDATED", published_on="2026-04-30",
+                          source_url="https://nsearchives.nseindia.com/filing.pdf",
+                          document_filename="report.pdf", expected_sha256=digest)
+            with register.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=columns)
+                writer.writeheader()
+                writer.writerows([common, common, {**common, "published_on": ""}])
+            summary = audit_filing_documents(register, root, root / "out")
+            self.assertEqual(summary["status_counts"], {
+                "REVIEW_ORIGINAL_DOCUMENT": 1,
+                "DUPLICATE_FILING_IDENTITY": 1,
+                "INCOMPLETE_FILING_IDENTITY": 1,
+            })
+            self.assertFalse(summary["certified"])
