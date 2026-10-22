@@ -40,7 +40,7 @@ class BreakoutHealthTests(unittest.TestCase):
     def test_stop_breach_precedes_positive_forward_close(self):
         c, h, v = self.fixtures()
         low = c.copy()
-        low.iloc[:, 0] = 99.0
+        low.iloc[:, 0] = 100.0
         low.iloc[70, 0] = 95.0
         result = breakout_health(c, h, v, low=low, lookback=30)
         self.assertEqual(result["stop_breaches"], 1)
