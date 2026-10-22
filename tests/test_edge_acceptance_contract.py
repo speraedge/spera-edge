@@ -31,7 +31,7 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         self.assertIn("30 3 * * 2-6", workflow)
         self.assertIn("30 14 * * 1-5", workflow)
         self.assertNotIn("30 1,2,3 * * 2-6", workflow)
-        self.assertNotIn("0 14 * * 1-5", workflow)
+        self.assertNotIn("- cron: '0 14 * * 1-5'", workflow)
         freshness = "Enforce latest completed NSE session before live publication"
         self.assertIn(freshness, workflow)
         self.assertLess(workflow.index("Validate complete snapshot files and metadata"), workflow.index(freshness))
