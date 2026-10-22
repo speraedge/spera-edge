@@ -103,7 +103,8 @@ class FinancialEvidenceLedger:
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(event_id) DO NOTHING RETURNING event_id""",
             (event_id, self.owner, *key, datetime.now(timezone.utc).isoformat(),
-             "SOURCE_RECONCILIATION", "REVIEW_REQUIRED", None, payload))
+             "SOURCE_RECONCILIATION", "REVIEW_REQUIRED",
+             safe["document_sha256"] or None, payload))
         if rows:
             return event_id
         existing = self.query("""SELECT owner_id, payload_json FROM edge_financial_evidence_events
