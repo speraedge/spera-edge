@@ -2,6 +2,10 @@
 import pandas as pd
 import numpy as np
 
+VERIFIED_SPECIAL_SESSIONS = {
+    '2026-02-01': 'https://nsearchives.nseindia.com/content/circulars/CMTR72349.pdf',
+}
+
 
 def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
     """Fail closed on invalid observed candles and mismatched time series.
@@ -20,7 +24,8 @@ def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
     sessions = pd.to_datetime(reference.index, errors="coerce")
     if sessions.isna().any() or sessions.has_duplicates:
         raise ValueError("Invalid or duplicate session dates")
-    if (sessions.dayofweek >= 5).any():
+    special = [str(session.date()) for session in sessions if session.dayofweek >= 5]
+    if any(session not in VERIFIED_SPECIAL_SESSIONS for session in special):
         raise ValueError("Weekend trading session in daily OHLCV")
     if expected_last_session is not None:
         expected = pd.Timestamp(expected_last_session).date()
@@ -49,6 +54,7 @@ def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
     if invalid.to_numpy().any():
         raise ValueError("Invalid price, volume or candle high/low bounds")
     return {"sessions": len(reference), "symbols": len(reference.columns),
+            "verified_special_sessions": special,
             "observed_candles": int(observed.to_numpy().sum()),
             "missing_candles": int((~observed).to_numpy().sum()),
             "first_session": str(sessions[0].date()),
