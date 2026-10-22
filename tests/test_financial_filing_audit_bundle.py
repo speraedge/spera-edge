@@ -28,7 +28,7 @@ def write_csv(path, fields, rows):
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows([{field: row.get(field, '') for field in fields} for row in rows])
 
 
 class BundleTests(unittest.TestCase):
