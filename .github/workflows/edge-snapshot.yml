@@ -2,8 +2,9 @@ name: NIFTY 500 automatic research snapshot
 on:
   workflow_dispatch:
   schedule:
-    # One next-morning Upstox EOD attempt at 09:00 IST, Tuesday-Saturday.
-    # Covers the preceding weekday's close; freshness gate blocks delayed candles.
+    # 20:00 IST Monday-Friday: attempt same-day EOD publication.
+    - cron: '30 14 * * 1-5'
+    # 09:00 IST Tuesday-Saturday: catch up after delayed provider updates.
     - cron: '30 3 * * 2-6'
 permissions:
   contents: write
