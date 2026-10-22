@@ -13,6 +13,7 @@ from edge_core.financial_growth_reconciliation import reconcile_financial_growth
 from edge_core.filing_document_provenance import audit_filing_documents
 from edge_core.statement_document_reconciliation import reconcile_statement_documents
 from edge_core.filing_value_reconciliation import reconcile_filing_values
+from edge_core.milestone2_readiness import assess_readiness
 from edge_core.historical_evidence_coverage import audit_coverage
 from edge_core.action_coverage_reconciliation import reconcile_action_coverage
 
@@ -81,6 +82,7 @@ def main():
             out / "coverage" / "historical_coverage.csv",
             out / "reconciliation")
     out.mkdir(parents=True, exist_ok=True)
+    result["readiness"] = assess_readiness(result, out / "readiness")
     (out / "evidence_manifest.json").write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
 
