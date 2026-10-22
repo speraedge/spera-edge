@@ -10,6 +10,7 @@ from edge_exports import numbered, export_section
 from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
 from edge_core.trade_review import journal_quality
+from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
 
 
 def market_report(close):
@@ -367,6 +368,40 @@ def render_private_portfolio(close, snapshot_usable):
         st.caption('Flags BUY entries without an accompanying entry note. A note is not proof of rule compliance; research signals are not matched to fills.')
         st.dataframe(numbered(quality), use_container_width=True)
         export_section('Private journal completeness', quality, 'private_journal_completeness')
+        st.subheader('Setup decision journal')
+        st.caption('Record WATCH, TAKE, REJECT or MISSED decisions separately from brokerage fills. Owner-only; no automatic trade is created.')
+        query("""CREATE TABLE IF NOT EXISTS edge_setup_decisions (
+            owner_id TEXT NOT NULL, decision_id TEXT NOT NULL,
+            created_utc TEXT NOT NULL, payload TEXT NOT NULL,
+            PRIMARY KEY(owner_id, decision_id))""")
+        decisions = query('SELECT decision_id, created_utc, payload FROM edge_setup_decisions WHERE owner_id=? ORDER BY created_utc DESC', (owner,))
+        decision_rows = [dict(json.loads(item['payload']), created_utc=item['created_utc'], decision_id=item['decision_id']) for item in decisions]
+        st.dataframe(numbered(pd.DataFrame(decision_rows)), use_container_width=True)
+        export_section('Private setup decisions', pd.DataFrame(decision_rows), 'private_setup_decisions')
+        if 'edge_decision_id' not in st.session_state:
+            st.session_state['edge_decision_id'] = str(uuid.uuid4())
+        with st.form('edge_setup_decision_form'):
+            dsymbol = st.text_input('Setup symbol').strip().upper()
+            dsession = st.date_input('Setup decision session')
+            ddecision = st.selectbox('Setup decision', DECISIONS)
+            dreason = st.selectbox('Primary reason', REASONS)
+            dnote = st.text_area('Decision rationale', max_chars=3000)
+            save_decision = st.form_submit_button('Record setup decision')
+        if save_decision:
+            try:
+                payload = validate_decision(dsymbol, dsession, ddecision, dreason, dnote)
+                inserted = query("""INSERT INTO edge_setup_decisions
+                    (owner_id, decision_id, created_utc, payload)
+                    VALUES (?, ?, ?, ?) ON CONFLICT(owner_id, decision_id) DO NOTHING
+                    RETURNING decision_id""",
+                    (owner, st.session_state['edge_decision_id'],
+                     datetime.now(timezone.utc).isoformat(), json.dumps(payload)))
+                if not inserted:
+                    raise ValueError('Decision already submitted; refresh to inspect')
+                st.session_state['edge_decision_id'] = str(uuid.uuid4())
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
