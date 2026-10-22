@@ -1,5 +1,6 @@
 """Conservative OHLCV quality gate. No price repair or ranking modification."""
 import pandas as pd
+import numpy as np
 
 
 def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
@@ -35,6 +36,9 @@ def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
         bad = frame.notna() & numbers[name].isna()
         if bad.to_numpy().any():
             raise ValueError("Non-numeric observed OHLCV: " + name)
+    for name, frame in numbers.items():
+        if frame.notna().to_numpy().any() and not np.isfinite(frame.to_numpy(dtype=float)[frame.notna().to_numpy()]).all():
+            raise ValueError("Non-finite observed OHLCV: " + name)
     observed = numbers["close"].notna() & numbers["high"].notna() & numbers["low"].notna() & numbers["volume"].notna()
     partial = sum(frame.notna() for frame in numbers.values())
     if ((partial > 0) & (partial < 4)).to_numpy().any():
