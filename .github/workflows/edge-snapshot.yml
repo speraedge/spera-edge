@@ -2,10 +2,9 @@ name: NIFTY 500 automatic research snapshot
 on:
   workflow_dispatch:
   schedule:
-    # Next-morning Upstox EOD publication attempts: 07:00, 08:00, 09:00 IST.
-    # Tuesday-Saturday mornings cover Monday-Friday sessions; Saturday covers Friday.
-    # Each attempt validates the expected completed session before any D1/repo write.
-    - cron: '30 1,2,3 * * 2-6'
+    # One next-morning Upstox EOD attempt at 09:00 IST, Tuesday-Saturday.
+    # Covers the preceding weekday's close; freshness gate blocks delayed candles.
+    - cron: '30 3 * * 2-6'
 permissions:
   contents: write
 concurrency:
