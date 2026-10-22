@@ -31,7 +31,7 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir, docu
                 raise ValueError("Filing document review missing required columns")
             for document in reader:
                 document_key = tuple(str(document.get(field) or "").strip().upper()
-                                     for field in ("symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url"))
+                                     for field in ("symbol", "isin", "period_end", "period_type", "basis", "source_url", "published_on"))
                 documents[document_key].append(document)
     def key(record):
         return tuple(str(record.get(field) or "").strip().upper() for field in
