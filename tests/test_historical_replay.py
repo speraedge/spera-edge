@@ -2,6 +2,7 @@ import unittest
 import numpy as np
 import pandas as pd
 from edge_core.historical_replay import replay_breakout_rules
+from edge_core.breakout_health import breakout_health
 
 
 class HistoricalReplayTests(unittest.TestCase):
@@ -47,6 +48,14 @@ class HistoricalReplayTests(unittest.TestCase):
         self.assertEqual(full.iloc[0]["Pivot"], partial.iloc[0]["Pivot"])
         self.assertEqual(full.iloc[0]["Volume_Ratio"], partial.iloc[0]["Volume_Ratio"])
         self.assertEqual(full.iloc[0]["Stop"], partial.iloc[0]["Stop"])
+
+    def test_reference_scanner_parity(self):
+        c, h, l, v = self.fixture()
+        reference = breakout_health(c, h, v, low=l, horizon=10, lookback=len(c))["events"]
+        replay = replay_breakout_rules(c, h, l, v, horizon=10)
+        self.assertEqual(reference["Session"].tolist(), replay["Session"].tolist())
+        self.assertEqual(reference["Outcome"].tolist(), replay["Outcome"].tolist())
+        self.assertEqual(reference["Pivot"].tolist(), replay["Pivot"].tolist())
 
     def test_misaligned_input_fails(self):
         c, h, l, v = self.fixture()
