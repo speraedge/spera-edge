@@ -11,6 +11,7 @@ from edge_core.financial_evidence import review_financials
 from edge_core.financial_comparability import review_comparability
 from edge_core.financial_growth_reconciliation import reconcile_financial_growth
 from edge_core.filing_document_provenance import audit_filing_documents
+from edge_core.statement_document_reconciliation import reconcile_statement_documents
 from edge_core.historical_evidence_coverage import audit_coverage
 from edge_core.action_coverage_reconciliation import reconcile_action_coverage
 
@@ -60,6 +61,10 @@ def main():
     if args.filing_register:
         result["filing_documents"] = audit_filing_documents(
             args.filing_register, args.filing_documents, out / "filing_documents")
+    if args.filing_register and args.financials:
+        result["statement_document_reconciliation"] = reconcile_statement_documents(
+            args.financials, out / "filing_documents" / "filing_document_review.csv",
+            out / "statement_documents")
     if args.coverage_register:
         result["historical_coverage"] = audit_coverage(args.coverage_register, args.coverage_start,
                                                        args.coverage_end, out / "coverage")
