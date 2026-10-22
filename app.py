@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
-from edge_core.breakout_health import breakout_health
+from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
 from edge_core.historical_leadership_bridge import historical_leadership_context
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
@@ -71,6 +71,16 @@ with tabs[0]:
         breakout_volume = snapshot_table("volume")
         if breakout_high is not None and breakout_volume is not None:
             health = breakout_health(prices, breakout_high, breakout_volume, low=snapshot_table('low'))
+            low_history = snapshot_table("low")
+            if low_history is not None:
+                horizon_summary = breakout_horizon_comparison(
+                    prices, breakout_high, breakout_volume, low=low_history)
+                st.subheader("5 / 10 / 20-session outcome comparison")
+                st.caption("Each horizon has a separate cooldown and may represent a different "
+                           "event cohort; compare rates cautiously. Stop breaches use daily lows, "
+                           "not executable stop fills.")
+                st.dataframe(numbered(horizon_summary), use_container_width=True)
+                export_section("Breakout horizon comparison", horizon_summary, "edge_breakout_horizons")
             m1, m2, m3 = st.columns(3)
             m1.metric("Qualified breakouts", health["qualified"])
             m2.metric("Resolved outcomes", health["resolved"])
