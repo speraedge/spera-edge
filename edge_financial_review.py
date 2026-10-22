@@ -79,6 +79,8 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
                                     key="edge_acquisition_review")
         if uploaded is not None:
             try:
+                if uploaded.size > 1024 * 1024:
+                    raise ValueError("Acquisition review exceeds 1 MB upload limit")
                 imported = json.loads(uploaded.getvalue().decode("utf-8"))
                 eligible = validate_acquisition_import(imported, queue)
                 st.caption(f"{len(eligible)} validated unverified outcomes")
