@@ -1,7 +1,7 @@
 {
-  "fetched_utc": "2026-10-22T14:33:38.024759+00:00",
+  "fetched_utc": "2026-10-22T16:01:18.276011+00:00",
   "membership_source": "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv",
-  "membership_sha256": "d299f103bfabeedaf6886725a658f63a860ce7f97c1bea52406de0eb41121e1b",
+  "membership_sha256": "6894dab01981a250c51892cf317bce33695a2a8f0d6e4d02fca2ccc89b2d2882",
   "membership_rows": 501,
   "benchmark_status": "PROVIDER_HISTORY",
   "benchmark_name": "NIFTY 500",
