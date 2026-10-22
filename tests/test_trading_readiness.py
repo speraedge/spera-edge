@@ -107,6 +107,26 @@ class TradingReadinessTests(unittest.TestCase):
             trading_readiness(self.scored, self.membership, [],
                               "2026-09-30", setup_evidence=setups)
 
+    def test_risk_plan_rejects_stale_or_ambiguous_batch(self):
+        inputs = {"capital": 500000, "risk_pct": 1, "entry": 100,
+                  "stop": 95, "committed_risk": 20000}
+        for fresh in (False, True):
+            with self.assertRaises(ValueError):
+                trading_readiness(self.scored, self.membership, [],
+                                  "2026-09-30", risk_inputs=inputs,
+                                  snapshot_fresh=fresh)
+
+    def test_risk_plan_single_candidate_capped_by_portfolio(self):
+        one = self.scored.iloc[[0]]
+        inputs = {"capital": 500000, "risk_pct": 1, "entry": 100,
+                  "stop": 95, "committed_risk": 24500}
+        result = trading_readiness(one, self.membership, [], "2026-09-30",
+                                   risk_inputs=inputs, snapshot_fresh=True)
+        plan = result["candidates"][0]["risk_plan"]
+        self.assertEqual(plan["quantity"], 100)
+        self.assertEqual(plan["planned_risk"], 500)
+        self.assertFalse(result["candidates"][0]["eligible_for_trading"])
+
     def test_duplicate_membership_rejected(self):
         membership = pd.concat([self.membership, self.membership.iloc[[0]]],
                                ignore_index=True)
