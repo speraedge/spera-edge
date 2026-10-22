@@ -7,6 +7,9 @@ import argparse
 import json
 import os
 import uuid
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from edge_core.d1_store import d1_query
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
