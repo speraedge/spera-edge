@@ -10,6 +10,7 @@ class HistoricalReplayTests(unittest.TestCase):
         close = pd.DataFrame({"A": np.full(85, 100.0)}, index=idx)
         high = pd.DataFrame({"A": np.full(85, 101.0)}, index=idx)
         low = pd.DataFrame({"A": np.full(85, 99.0)}, index=idx)
+        low.iloc[66:, 0] = 101.0
         volume = pd.DataFrame({"A": np.full(85, 100.0)}, index=idx)
         close.iloc[65, 0] = 105
         high.iloc[65, 0] = 106
