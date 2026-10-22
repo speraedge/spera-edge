@@ -36,4 +36,4 @@ class ComparabilityTests(unittest.TestCase):
     def test_quarterly_previous_quarter_boundary(self):
         from edge_core.financial_comparability import _prior_period
         self.assertEqual(_prior_period("2026-03-31", "Q"), "2025-12-31")
-        self.assertEqual(_prior_period("2026-06-30", "Q"), "2026-03-30")
+        self.assertEqual(_prior_period("2026-06-30", "Q"), "2026-03-31")
