@@ -11,6 +11,7 @@ from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
 from edge_core.trade_review import journal_quality
 from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
+from edge_core.decision_outcomes import decision_outcomes
 
 
 def market_report(close):
@@ -378,6 +379,16 @@ def render_private_portfolio(close, snapshot_usable):
         decision_rows = [dict(json.loads(item['payload']), created_utc=item['created_utc'], decision_id=item['decision_id']) for item in decisions]
         st.dataframe(numbered(pd.DataFrame(decision_rows)), use_container_width=True)
         export_section('Private setup decisions', pd.DataFrame(decision_rows), 'private_setup_decisions')
+        if decision_rows:
+            st.subheader('Dated decision outcomes')
+            st.caption('Close-to-close observations after 5, 10 or 20 trading sessions, not actual trade returns. No future sessions are imputed. Decision records are linked by their unique IDs and exact dates.')
+            if not snapshot_usable or close is None:
+                st.warning('Fresh OHLCV snapshot required for decision outcomes.')
+            else:
+                outcome_horizon = st.selectbox('Forward observation horizon (sessions)', (5, 10, 20))
+                observed = decision_outcomes(decision_rows, close, horizon=outcome_horizon)
+                st.dataframe(numbered(observed), use_container_width=True)
+                export_section('Private dated decision outcomes', observed, 'private_decision_outcomes')
         if 'edge_decision_id' not in st.session_state:
             st.session_state['edge_decision_id'] = str(uuid.uuid4())
         with st.form('edge_setup_decision_form'):
