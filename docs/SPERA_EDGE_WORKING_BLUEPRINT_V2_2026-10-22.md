@@ -60,3 +60,41 @@ Status: APPROVED OPERATING DESIGN; implementation remains staged and uncertified
 
 ## Not yet complete
 Automatic multi-source financial retrieval, quarterly-result detection, production manual-review queue, complete corporate-action adjustments, independent historical certification, and final certified SEPA outputs. Do not describe these as shipped.
+
+
+## Delivery status and work register — updated 22 October 2026
+
+This section is a dated implementation ledger, not an amendment to the frozen rules above. No percentage is asserted for independent certification.
+
+| Workstream | Implemented | Verified boundary | Open acceptance gate |
+| --- | --- | --- | --- |
+| Market Pulse | Streamlit market breadth, participation and industries | Historical code/tests; current production release not re-certified here | Daily freshness, point-in-time breadth and published UI |
+| Leadership Scanner | Frozen Momentum V1 ranking, relative strength and official NIFTY 500 identity | Published identity evidence and regression coverage | Independent price adjustment, RS and historical membership audit |
+| Trade Desk | VCP/pivot/volume research and risk planning | Offline research tests | Setup correctness, forward validation and certified signal policy |
+| Portfolio & Journal | Accounting and risk backend | Backend tests | Production owner authentication and end-to-end UI verification; authentication deliberately deferred |
+| Financial Evidence Review | Shortlist, deterministic queue, manual intake, owner-scoped append-only D1 ledger | Live synthetic D1 persistence, quarantine, owner isolation and idempotency passed in Actions 39734370759 | Authenticated production UI and genuine financial source reconciliation |
+| Official filing acquisition | Explicit NSE/BSE HTTPS PDF downloader, SHA-256 manifest, no redirects and 25 MB bound | Offline acquisition tests | Permitted filing discovery, reporting metadata completeness, issuer authenticity and extracted figures |
+| Acquisition register bridge | Exact symbol/ISIN/period/type/basis matching; ambiguity and absent source remain review | Five offline tests passed in failed aggregate run 39751486743 | Connect bridge to acquisition, reconciliation, queue, ledger and UI |
+| Financial comparability and reconciliation | Separate arithmetic, statement/document and transcription review modules | Offline tests; output explicitly uncertified | Cross-module orchestration, actual source verification and correction/restatement audit |
+| Corporate actions | Evidence import/research scaffolding | Not independently certified | Split/bonus adjustment and point-in-time coverage |
+| GitHub operations | Quality workflow and historical successful live D1 smoke test | Run 39751486743 failed 2/107 due to CSV fixture column mismatch; correction committed a11f40a | Confirm fresh successful CI on corrected branch, then integration acceptance |
+| Production release | Existing Streamlit application on main | Latest development features are NOT confirmed deployed | Separate release approval and live smoke test |
+
+### Next cohesive milestone: official financial acquisition and reconciliation
+
+1. Preserve frozen V1 and separate EDGE database boundaries; do not merge development changes prematurely.
+2. Connect shortlist to exact official filing register and acquisition results, retaining symbol, ISIN, Q/FY, reporting basis, publication date, source URL, SHA-256, HTTP outcome and immutable provenance.
+3. Implement only permitted source discovery where authoritative endpoints allow it; handle 403/429 with bounded retry and explicit blocked-source review. Do not infer missing filings or invent data.
+4. Reconcile statement identity, units, periods, basis, original source, document digest, revenue/PAT and restatements; fail closed on mismatches.
+5. Route unresolved evidence into deterministic operator review. Manual entries remain quarantined and never independently certify themselves.
+6. Exercise synthetic success, absent source, HTTP 403/429, duplicates, wrong ISIN, ambiguous filings, inconsistent basis, partial fields, replay and owner isolation.
+7. Require clean full CI, documented live-infrastructure evidence, and explicit release approval before production deployment. Distinguish offline PASS, live persistence PASS, verified financial data and certified trading signals.
+
+### Last-known source-of-truth references
+
+- Repository: `speraedge/spera-edge`; development branch: `milestone2-evidence-audit`; draft PR #1.
+- Live D1 smoke: Actions run `39734370759`, synthetic quarantined event retained append-only.
+- Acquisition bridge commits: `a406e0c`, `7c8f533`.
+- Quality failure: Actions run `39751486743`, 105 tests passed, two fixture errors.
+- Fixture repair commit: `a11f40a` (CI outcome must be checked separately).
+- This blueprint remains an operating specification; a code commit does not imply successful deployment or certified data.
