@@ -22,7 +22,7 @@ def validate_url(url):
     parsed = urlparse(str(url).strip())
     if parsed.scheme != "https" or parsed.hostname not in ALLOWED_HOSTS:
         raise ValueError("Source must be an explicitly allowed official exchange HTTPS URL")
-    if parsed.username or parsed.password or parsed.port:
+    if parsed.username or parsed.password or parsed.port or parsed.fragment:
         raise ValueError("Source URL cannot include credentials or a port")
     return parsed.geturl()
 
