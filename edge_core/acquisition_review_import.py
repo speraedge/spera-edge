@@ -3,6 +3,7 @@
 Reject the entire batch on an invalid or unmatched record; never silently
 drop evidence or promote a certification flag.
 """
+from datetime import date
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
 from tools.acquire_official_filings import validate_url
 
@@ -51,6 +52,16 @@ def validate_acquisition_import(payload, queue):
                 char not in "0123456789abcdefABCDEF" for char in digest
             ):
                 raise ValueError("Acquired evidence requires a valid SHA256 digest")
+            published = item.get("published_on")
+            if not isinstance(published, str):
+                raise ValueError("Acquired evidence requires a publication date")
+            try:
+                publication_date = date.fromisoformat(published)
+                period_date = date.fromisoformat(str(item["period_end"]))
+            except (ValueError, TypeError) as exc:
+                raise ValueError("Invalid acquired evidence date") from exc
+            if publication_date < period_date or publication_date > date.today():
+                raise ValueError("Publication date outside valid period")
         checked.append({**{k: v for k, v in zip(KEYS, key)},
                         "acquisition_status": str(item["acquisition_status"]).strip().upper(),
                         "source_url": str(item.get("source_url", "")).strip(),
