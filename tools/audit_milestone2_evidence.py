@@ -12,6 +12,7 @@ from edge_core.financial_comparability import review_comparability
 from edge_core.financial_growth_reconciliation import reconcile_financial_growth
 from edge_core.filing_document_provenance import audit_filing_documents
 from edge_core.statement_document_reconciliation import reconcile_statement_documents
+from edge_core.filing_value_reconciliation import reconcile_filing_values
 from edge_core.historical_evidence_coverage import audit_coverage
 from edge_core.action_coverage_reconciliation import reconcile_action_coverage
 
@@ -23,6 +24,7 @@ def main():
     parser.add_argument("--financials", help="Financial statement evidence CSV")
     parser.add_argument("--filing-register", help="CSV listing original financial filing documents")
     parser.add_argument("--filing-documents", help="Directory containing locally downloaded filing documents")
+    parser.add_argument("--filing-transcriptions", help="Operator-transcribed original filing values CSV")
     parser.add_argument("--coverage-register", help="Reviewed monthly historical source register CSV")
     parser.add_argument("--coverage-start", help="Inclusive YYYY-MM-DD")
     parser.add_argument("--coverage-end", help="Inclusive YYYY-MM-DD")
@@ -36,6 +38,8 @@ def main():
         parser.error("Supply at least one evidence CSV")
     if bool(args.filing_register) != bool(args.filing_documents):
         parser.error("Filing register and document directory must both be supplied")
+    if args.filing_transcriptions and not args.financials:
+        parser.error("Filing transcriptions require financial statements")
     membership = pd.read_csv(args.membership, dtype=str).fillna("")
     if not {"Symbol", "ISIN Code"}.issubset(membership.columns):
         parser.error("Membership needs Symbol and ISIN Code")
@@ -65,6 +69,9 @@ def main():
         result["statement_document_reconciliation"] = reconcile_statement_documents(
             args.financials, out / "filing_documents" / "filing_document_review.csv",
             out / "statement_documents")
+    if args.filing_transcriptions:
+        result["filing_value_reconciliation"] = reconcile_filing_values(
+            args.financials, args.filing_transcriptions, out / "filing_values")
     if args.coverage_register:
         result["historical_coverage"] = audit_coverage(args.coverage_register, args.coverage_start,
                                                        args.coverage_end, out / "coverage")
