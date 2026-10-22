@@ -22,6 +22,8 @@ def assess_financial_certification(candidate, *, reviewer=None, source_authentic
         evidence = {}
     missing = [key for key, expected in REQUIRED.items()
                if evidence.get(key) != expected]
+    if evidence.get("identity_status") != "FULL_IDENTITY_VERIFIED":
+        missing.append("full_filing_identity_reconciliation")
     if candidate.get("acquisition_status") != "ACQUIRED_UNVERIFIED":
         missing.append("official_document_acquisition")
     try:
