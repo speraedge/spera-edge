@@ -9,6 +9,7 @@ import pandas as pd
 from edge_exports import numbered, export_section
 from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
+from edge_core.trade_review import journal_quality
 
 
 def market_report(close):
@@ -361,6 +362,11 @@ def render_private_portfolio(close, snapshot_usable):
         ledger = Ledger(owner, query)
         ledger.initialize()
         events = ledger.events()
+        st.subheader('Private journal completeness')
+        quality = journal_quality(events)
+        st.caption('Flags BUY entries without an accompanying entry note. A note is not proof of rule compliance; research signals are not matched to fills.')
+        st.dataframe(numbered(quality), use_container_width=True)
+        export_section('Private journal completeness', quality, 'private_journal_completeness')
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
