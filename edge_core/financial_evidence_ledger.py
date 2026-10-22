@@ -70,3 +70,44 @@ class FinancialEvidenceLedger:
         if not existing or existing[0]["owner_id"] != self.owner or existing[0]["payload_json"] != payload:
             raise ValueError("Event ID collision or altered replay")
         return event_id
+
+    def append_reconciliation(self, queue, outcome, *, event_id=None):
+        """Append an unverified source-acquisition outcome for a queued identity.
+
+        Never accepts owner identity, certification or event status from input.
+        Replays require the exact same event payload and owner.
+        """
+        allowed = {(str(x["symbol"]).strip().upper(), str(x["isin"]).strip().upper(),
+                    str(x["period_end"]), str(x["period_type"]), str(x["basis"]))
+                   for x in queue}
+        key = tuple(str(outcome.get(k, "")).strip().upper() for k in
+                    ("symbol", "isin", "period_end", "period_type", "basis"))
+        if key not in allowed:
+            raise ValueError("Reconciliation outcome not in owner review queue")
+        status = str(outcome.get("acquisition_status", "")).strip().upper()
+        if status not in ("SOURCE_NOT_FOUND", "AMBIGUOUS_SOURCE", "INVALID_PUBLICATION_DATE",
+                          "INVALID_SOURCE_METADATA", "ACQUISITION_PENDING_UNVERIFIED",
+                          "ACQUIRED_UNVERIFIED", "HTTP_403", "HTTP_429",
+                          "HTTP_ERROR", "DOWNLOAD_ERROR", "INVALID_PDF",
+                          "TOO_LARGE", "REVIEW_REQUIRED"):
+            raise ValueError("Unknown or unsafe acquisition status")
+        safe = {k: str(outcome.get(k, "")).strip() for k in
+                ("symbol", "isin", "period_end", "period_type", "basis",
+                 "acquisition_status", "source_url", "published_on", "document_sha256")}
+        safe.update(certified=False, ready_for_trading_signals=False)
+        payload = json.dumps(safe, sort_keys=True, allow_nan=False)
+        event_id = event_id or str(uuid.uuid4())
+        rows = self.query("""INSERT INTO edge_financial_evidence_events
+            (event_id, owner_id, symbol, isin, period_end, period_type, basis,
+             created_utc, event_kind, intake_status, source_sha256, payload_json)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(event_id) DO NOTHING RETURNING event_id""",
+            (event_id, self.owner, *key, datetime.now(timezone.utc).isoformat(),
+             "SOURCE_RECONCILIATION", "REVIEW_REQUIRED", None, payload))
+        if rows:
+            return event_id
+        existing = self.query("""SELECT owner_id, payload_json FROM edge_financial_evidence_events
+            WHERE event_id=?""", (event_id,))
+        if not existing or existing[0]["owner_id"] != self.owner or existing[0]["payload_json"] != payload:
+            raise ValueError("Event ID collision or altered reconciliation replay")
+        return event_id
