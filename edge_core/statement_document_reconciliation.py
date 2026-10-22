@@ -17,13 +17,15 @@ def reconcile_statement_documents(financials_csv, document_review_csv, output_di
     index = defaultdict(list)
     for doc in documents:
         key = (str(doc["symbol"]).strip().upper(), str(doc["isin"]).strip().upper(),
-               str(doc["period_end"]).strip(), str(doc["basis"]).strip().upper(),
+               str(doc["period_end"]).strip(), str(doc.get("period_type", "")).strip().upper(),
+               str(doc["basis"]).strip().upper(), str(doc.get("published_on", "")).strip(),
                str(doc["source_url"]).strip())
         index[key].append(doc)
     findings = []
     for number, record in enumerate(financials, 2):
         key = (str(record["symbol"]).strip().upper(), str(record["isin"]).strip().upper(),
-               str(record["period_end"]).strip(), str(record["basis"]).strip().upper(),
+               str(record["period_end"]).strip(), str(record.get("period_type", "")).strip().upper(),
+               str(record["basis"]).strip().upper(), str(record.get("published_on", "")).strip(),
                str(record["source_url"]).strip())
         matches = index.get(key, [])
         if not matches:
@@ -35,11 +37,12 @@ def reconcile_statement_documents(financials_csv, document_review_csv, output_di
         else:
             status = "MATCHED_DOCUMENT_UNCERTIFIED"
         findings.append({"row": number, "symbol": key[0], "isin": key[1],
-                         "period_end": key[2], "basis": key[3], "source_url": key[4],
+                         "period_end": key[2], "period_type": key[3], "basis": key[4],
+                         "published_on": key[5], "source_url": key[6],
                          "document_status": status, "certified": False})
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
-    fields = ["row", "symbol", "isin", "period_end", "basis", "source_url",
+    fields = ["row", "symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
               "document_status", "certified"]
     with (out / "statement_document_reconciliation.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
