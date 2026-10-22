@@ -145,9 +145,7 @@ with tabs[1]:
                 st.subheader("Excluded FAIL records")
                 st.dataframe(numbered(scored[scored["Data_Quality"].eq("FAIL")]), use_container_width=True)
                 export_section("Excluded FAIL", scored[scored["Data_Quality"].eq("FAIL")], "excluded_fail")
-                st.download_button("Download qualification evidence",levels.to_csv(index=False),"edge_qualification_evidence.csv","text/csv")
                 st.warning("Research ranks are provisional unless independently certified. REVIEW is not PASS.")
-                st.download_button("Download ranked research CSV", scored.to_csv(index=False), "edge_ranked_research.csv", "text/csv")
                 st.caption("Imported data is not independently certified. REVIEW/FAIL are not in the trusted list.")
         except Exception as exc:
             st.error(f"Unable to score input: {exc}")
@@ -197,11 +195,6 @@ with tabs[1]:
                     st.caption("Historical SPERA Wisdom sector rankings only; not a current EDGE sector signal.")
                     st.dataframe(numbered(archived_sectors.sort_values("sector_rank")),use_container_width=True)
                     export_section("Archived sectors", archived_sectors.sort_values("sector_rank"), "archived_sectors_"+selected_week)
-                    st.download_button(
-                        "Download archived sector rankings",
-                        archived_sectors.sort_values("sector_rank").to_csv(index=False),
-                        f"edge_archived_sectors_{selected_week}.csv","text/csv"
-                    )
                     st.caption(f"Sector coverage: {len(archived_cohorts)} historical stock records; not a complete live classification.")
 
                 else:
@@ -211,7 +204,6 @@ with tabs[1]:
                 historical=historical.sort_values("Pure_Momentum_Rank",na_position="last")
             st.dataframe(numbered(historical.head(50)),use_container_width=True)
             export_section("Historical weekly leadership", historical, "history_"+selected_week)
-            st.download_button("Download selected historical week",historical.to_csv(index=False),f"edge_history_{selected_week}.csv","text/csv")
         except (OSError,ValueError,KeyError,pd.errors.ParserError) as exc:
             st.error(f"Historical snapshot unavailable: {exc}")
     else:
@@ -261,7 +253,6 @@ with tabs[2]:
                     else:
                         st.warning("Trading readiness requires verified membership provenance.")
 
-                st.download_button("Download VCP research candidates",candidates.to_csv(index=False),"edge_vcp_candidates.csv","text/csv")
             except (ValueError, KeyError) as exc:
                 st.error(str(exc))
 with tabs[3]:
