@@ -2,12 +2,13 @@
 
 Independent NIFTY 500 research and trade-planning application. The original SPERA Wisdom project is not modified. No brokerage orders are implemented.
 
-## Four tabs
+## Five tabs
 
 - Market Pulse: dated breadth, advances/declines, expansion/deterioration, conservative participation heuristics and official current-industry research.
 - Leadership Scanner: frozen Momentum V1, price-only Stage 2 template, universe-relative strength, institutional 12-1/path diagnostics and explicit evidence gates. PASS, REVIEW and FAIL remain separate.
 - Trade Desk: VCP research, prior-session pivot and volume confirmation, protective-stop reference, risk/exposure-capped sizing, selected watchlists and CSV exports. Technical confirmation is not a certified SEPA signal.
 - Portfolio & Journal: authenticated, owner-scoped, append-only D1 ledger for long entries, partial exits, stops, fees, review notes, realized/unrealized P&L, exposure and risk.
+- Financial Evidence Review: owner-only intake for independently sourced filings and financial-value reconciliation; no automatic certification or trading-signal upgrades.
 
 ## Data and limitations
 
@@ -27,4 +28,4 @@ Run python -m unittest discover -s tests -v and python -m compileall -q app.py e
 
 Run Actions > Verify EDGE persistence and release to verify independent D1 write/read, owner isolation and published research counts. This retains an explicitly labeled synthetic technical NOTE under a unique probe owner, never as an actual trade. Authenticated production-user journal verification additionally requires the private configuration above.
 
-Production deploys main/app.py through Streamlit Community Cloud. Verify all four deployed tabs and downloads separately from CI.
+Production deploys main/app.py through Streamlit Community Cloud. Verify all five deployed tabs and downloads separately from CI.

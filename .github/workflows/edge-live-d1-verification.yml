@@ -1,0 +1,31 @@
+name: EDGE Live D1 Evidence Verification
+on:
+  push:
+    branches: [milestone2-evidence-audit]
+    paths:
+      - '.github/workflows/edge-live-d1-verification.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-d1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
+      EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
+      EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify credentials configured
+        run: |
+          test -n "$EDGE_CF_ACCOUNT_ID" || { echo 'Missing EDGE_CF_ACCOUNT_ID'; exit 1; }
+          test -n "$EDGE_D1_DATABASE_ID" || { echo 'Missing EDGE_D1_DATABASE_ID'; exit 1; }
+          test -n "$EDGE_CF_API_TOKEN" || { echo 'Missing EDGE_CF_API_TOKEN'; exit 1; }
+      - name: Install D1 client dependency
+        run: python -m pip install requests
+      - name: Execute live D1 synthetic evidence smoke check
+        run: python tools/verify_edge_d1.py --live

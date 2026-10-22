@@ -69,8 +69,11 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     research,breadth=derive_research(close,volume)
     if len(research)!=successful:
         raise RuntimeError("Research retrieved-universe coverage gate failed")
+    import tempfile, shutil
+    from edge_core.snapshot_integrity import validate_snapshot
     destination=Path(outdir)
-    destination.mkdir(parents=True,exist_ok=True)
+    destination.parent.mkdir(parents=True,exist_ok=True)
+    staging=Path(tempfile.mkdtemp(prefix='.edge-snapshot-',dir=destination.parent))
     # Preserve the official universe even when a provider symbol is missing.
     missing=[symbol for symbol in mapping["Symbol"] if symbol not in fields["close"]]
     if missing:
@@ -80,10 +83,10 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         research=pd.concat([research,extra],ignore_index=True)
     if len(research)!=expected or research["Symbol"].isna().any() or research["Symbol"].duplicated().any():
         raise RuntimeError("Research universe identity gate failed")
-    research.to_csv(destination/"leadership.csv",index=False)
+    research.to_csv(staging/"leadership.csv",index=False)
     # Store recent OHLCV for chart inspection; do not expose provider secrets.
     for name,frame in matrices.items():
-        frame.tail(253).to_csv(destination/f"{name}.csv",index_label="Date")
+        frame.tail(253).to_csv(staging/f"{name}.csv",index_label="Date")
     metadata={
         "universe":"NIFTY_500","expected":expected,"mapped":len(mapping_ok),
         "retrieved":successful,"retrieval_failures":failures,
@@ -98,7 +101,18 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         "quality":"REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
         "certified":False,"breadth":breadth
     }
-    (destination/"metadata.json").write_text(json.dumps(metadata,indent=2))
+    (staging/"metadata.json").write_text(json.dumps(metadata,indent=2))
+    try:
+        validate_snapshot(staging)
+        latest = pd.Timestamp(metadata["last_session"]).date()
+        if (end - latest).days > 5:
+            raise RuntimeError("Provider snapshot stale; preserving last-known-good")
+        destination.mkdir(parents=True,exist_ok=True)
+        for name in ("leadership.csv","close.csv","high.csv","low.csv","volume.csv"):
+            os.replace(staging/name,destination/name)
+        os.replace(staging/"metadata.json",destination/"metadata.json")
+    finally:
+        shutil.rmtree(staging,ignore_errors=True)
     return metadata
 
 if __name__=="__main__":

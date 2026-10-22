@@ -2,6 +2,10 @@
 import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
+from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
+from edge_core.historical_replay import replay_breakout_rules
+from edge_core.breadth_breakout_bridge import breadth_breakout_summary
+from edge_core.historical_leadership_bridge import historical_leadership_context, leadership_breakout_summary
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
 from edge_core.portfolio import position_size, journal_entry
@@ -16,7 +20,11 @@ import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from edge_core.snapshot_integrity import validate_snapshot
-from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries
+from edge_core.ohlcv_integrity import snapshot_is_fresh
+from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report
+from edge_financial_review import render_financial_evidence_review
+from edge_exports import export_section, numbered
+from edge_trader_readiness_ui import render_trader_readiness
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -42,22 +50,113 @@ if edge_meta:
         last_session=pd.Timestamp(edge_meta["last_session"]).date()
         now_ist=datetime.now(ZoneInfo("Asia/Kolkata"))
         age=(now_ist.date()-last_session).days
-        snapshot_usable=0 <= age <= 5 and (age > 0 or now_ist.hour >= 16)
-        if age>5 or age<0:
-            st.error(f"Snapshot is stale or dated in the future ({age} calendar days). Do not trade from these results.")
+        snapshot_usable=snapshot_is_fresh(last_session, now_ist)
+        if not snapshot_usable:
+            st.error(f"Snapshot does not match the latest expected completed session ({age} calendar days old). Weekday/verified-special-session check; unverified exchange holidays fail closed. Do not trade from stale results.")
     except (ValueError,TypeError,KeyError):
         st.error("Snapshot session date invalid; research outputs are not certified.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
 
-tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal"])
+tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal", "Financial Evidence Review"])
 with tabs[0]:
     st.subheader("Market Pulse")
     prices = snapshot_table("close") if edge_meta else None
 
     if prices is not None:
         render_market(prices)
+        st.subheader("Breakout health (research-only)")
+        st.caption("Prior 20-session high breakout on >=1.5x prior 50-session volume; "
+                   "10-session forward close above breakout close without a stop breach = success. "
+                   "Unresolved events are excluded. Heuristic, not SEPA certification.")
+        breakout_high = snapshot_table("high")
+        breakout_volume = snapshot_table("volume")
+        if breakout_high is not None and breakout_volume is not None:
+            health = breakout_health(prices, breakout_high, breakout_volume, low=snapshot_table('low'))
+            low_history = snapshot_table("low")
+            if low_history is not None:
+                horizon_summary = breakout_horizon_comparison(
+                    prices, breakout_high, breakout_volume, low=low_history)
+                st.subheader("5 / 10 / 20-session outcome comparison")
+                st.caption("Each horizon has a separate cooldown and may represent a different "
+                           "event cohort; compare rates cautiously. Stop breaches use daily lows, "
+                           "not executable stop fills.")
+                st.dataframe(numbered(horizon_summary), use_container_width=True)
+                export_section("Breakout horizon comparison", horizon_summary, "edge_breakout_horizons")
+                with st.expander("Historical OHLCV rule replay (research only)", expanded=False):
+                    st.caption("Uses the existing saved Upstox OHLCV snapshot; no new API request. "
+                               "Signal-day inputs exclude future candles. Current-universe and "
+                               "corporate-action limitations prevent certified return claims.")
+                    available_sessions = prices.index
+                    default_start = available_sessions[max(0, len(available_sessions) - 252)].date()
+                    replay_start = st.date_input("Replay from", value=default_start,
+                                                 min_value=available_sessions[0].date(),
+                                                 max_value=available_sessions[-1].date(),
+                                                 key="edge_replay_start")
+                    replay_end = st.date_input("Replay through", value=available_sessions[-1].date(),
+                                               min_value=available_sessions[0].date(),
+                                               max_value=available_sessions[-1].date(),
+                                               key="edge_replay_end")
+                    if st.button("Run historical rule replay", key="edge_run_replay"):
+                        if replay_start > replay_end:
+                            st.error("Replay start must not exceed end.")
+                        else:
+                            with st.spinner("Evaluating historical breakout rules..."):
+                                replay = replay_breakout_rules(
+                                    prices, breakout_high, low_history, breakout_volume,
+                                    start=replay_start, end=replay_end)
+                            st.session_state["edge_replay_result"] = replay
+                            st.session_state["edge_replay_range"] = (str(replay_start), str(replay_end))
+                    replay = st.session_state.get("edge_replay_result")
+                    if replay is not None:
+                        st.caption("Last replay period: " + str(st.session_state.get("edge_replay_range", "unknown")))
+                        resolved = replay["Outcome"].isin(["SUCCESS", "FAILURE", "STOP_BREACH"])
+                        wins = int((replay["Outcome"] == "SUCCESS").sum())
+                        total = int(resolved.sum())
+                        st.caption(f"Signals: {len(replay)} | Resolved: {total} | "
+                                   f"Successes: {wins} | Stop breaches: "
+                                   f"{int((replay['Outcome'] == 'STOP_BREACH').sum())} | "
+                                   f"Unresolved: {len(replay)-total}. "
+                                   "This is an outcome study, not a net-return backtest.")
+                        st.dataframe(numbered(replay.tail(250)), use_container_width=True)
+                        export_section("Historical rule replay", replay, "edge_historical_rule_replay")
+
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Qualified breakouts", health["qualified"])
+            m2.metric("Resolved outcomes", health["resolved"])
+            m3.metric("10-session success rate",
+                      f'{health["success_rate_pct"]}%' if health["success_rate_pct"] is not None else "Insufficient outcomes")
+            st.caption(f'Successes: {health["successes"]} | Failures: {health["failures"]} | '
+                       f'Stop breaches: {health["stop_breaches"]} | Unresolved: {health["unresolved"]}. Current-universe survivorship bias applies.')
+            st.dataframe(numbered(health["events"].tail(100)), use_container_width=True)
+            export_section("Breakout outcomes", health["events"], "edge_breakout_outcomes")
+            breadth_history = market_report(prices)["history"]
+            breadth_history.attrs["universe_size"] = len(prices.columns)
+            breadth_groups = breadth_breakout_summary(health["events"], breadth_history)
+            st.subheader("Breakout outcomes by market breadth")
+            st.caption("Same-session breadth; current-universe survivorship bias. "
+                       "No breadth evidence is kept separate. Research-only.")
+            st.dataframe(numbered(breadth_groups), use_container_width=True)
+            export_section("Breadth breakout outcomes", breadth_groups, "edge_breadth_breakout_outcomes")
+            history_root = Path(__file__).parent / "data" / "history"
+            if (history_root / "manifest.json").is_file() and not health["events"].empty:
+                try:
+                    linked = historical_leadership_context(health["events"], history_root)
+                    st.subheader("Breakouts vs earlier SperaWisdom leadership")
+                    st.caption("Strictly prior weekly rank only; missing history stays missing. "
+                               "Historical Wisdom research is read-only, not an EDGE trading certification.")
+                    grouped = leadership_breakout_summary(linked)
+                    st.caption("Historical outcome groups use strictly earlier weekly rankings. "
+                               "Missing ranks and unresolved outcomes are never counted as failures.")
+                    st.dataframe(numbered(grouped), use_container_width=True)
+                    export_section("Leadership breakout comparison", grouped, "edge_leadership_breakout_summary")
+                    st.dataframe(numbered(linked.tail(100)), use_container_width=True)
+                    export_section("Breakouts with prior leadership", linked, "edge_breakout_leadership")
+                except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
+                    st.warning(f"Historical leadership comparison unavailable: {exc}")
+        else:
+            st.info("Breakout health requires aligned high, close and volume history.")
         render_industries(SNAPSHOT_DIR,prices)
         stats = market_breadth(prices)
         st.metric("Symbols provided", stats["coverage"])
@@ -130,17 +229,19 @@ with tabs[1]:
                 st.metric("RS percentile ≥80 (research only)",int(levels["RS_80th_Percentile_Diagnostic"].sum()))
                 st.caption("Setup checks use actual OHLCV and remain provisional. No certified SEPA signals.")
                 st.caption("SEPA and actionable setup qualification pending independent relative strength, sector and source checks.")
-                st.dataframe(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50),use_container_width=True)
+                st.dataframe(numbered(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50)),use_container_width=True)
+                export_section("Leadership qualification", levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50), "leadership_qualification")
                 st.metric("Trusted PASS stocks", int(scored["Data_Quality"].eq("PASS").sum()))
                 st.subheader("Trusted PASS research")
-                st.dataframe(scored[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
+                st.dataframe(numbered(scored[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50)), use_container_width=True)
+                export_section("Trusted PASS", scored[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50), "trusted_pass")
                 st.subheader("Provisional REVIEW research")
-                st.dataframe(scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank").head(50), use_container_width=True)
+                st.dataframe(numbered(scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank").head(50)), use_container_width=True)
+                export_section("Provisional REVIEW", scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank").head(50), "provisional_review")
                 st.subheader("Excluded FAIL records")
-                st.dataframe(scored[scored["Data_Quality"].eq("FAIL")], use_container_width=True)
-                st.download_button("Download qualification evidence",levels.to_csv(index=False),"edge_qualification_evidence.csv","text/csv")
+                st.dataframe(numbered(scored[scored["Data_Quality"].eq("FAIL")]), use_container_width=True)
+                export_section("Excluded FAIL", scored[scored["Data_Quality"].eq("FAIL")], "excluded_fail")
                 st.warning("Research ranks are provisional unless independently certified. REVIEW is not PASS.")
-                st.download_button("Download ranked research CSV", scored.to_csv(index=False), "edge_ranked_research.csv", "text/csv")
                 st.caption("Imported data is not independently certified. REVIEW/FAIL are not in the trusted list.")
         except Exception as exc:
             st.error(f"Unable to score input: {exc}")
@@ -181,18 +282,15 @@ with tabs[1]:
                             sector_now=current_sector_research(current_prices,archived_cohorts,selected_week)
                             st.subheader("Current price-based sector momentum")
                             st.caption("Live price returns grouped using archived sector membership from "+selected_week+". PROVISIONAL; mapping is incomplete and not a current certified sector index.")
-                            st.dataframe(sector_now,use_container_width=True)
+                            st.dataframe(numbered(sector_now),use_container_width=True)
+                            export_section("Current sector research", sector_now, "current_sector_research")
                             st.download_button("Download provisional current sector research",sector_now.to_csv(index=False),"edge_current_sector_research.csv","text/csv")
                         except ValueError as sector_error:
                             st.warning(f"Current sector research unavailable: {sector_error}")
                     st.subheader("Archived sector leadership")
                     st.caption("Historical SPERA Wisdom sector rankings only; not a current EDGE sector signal.")
-                    st.dataframe(archived_sectors.sort_values("sector_rank"),use_container_width=True)
-                    st.download_button(
-                        "Download archived sector rankings",
-                        archived_sectors.sort_values("sector_rank").to_csv(index=False),
-                        f"edge_archived_sectors_{selected_week}.csv","text/csv"
-                    )
+                    st.dataframe(numbered(archived_sectors.sort_values("sector_rank")),use_container_width=True)
+                    export_section("Archived sectors", archived_sectors.sort_values("sector_rank"), "archived_sectors_"+selected_week)
                     st.caption(f"Sector coverage: {len(archived_cohorts)} historical stock records; not a complete live classification.")
 
                 else:
@@ -200,8 +298,8 @@ with tabs[1]:
 
             if "Pure_Momentum_Rank" in historical.columns:
                 historical=historical.sort_values("Pure_Momentum_Rank",na_position="last")
-            st.dataframe(historical.head(50),use_container_width=True)
-            st.download_button("Download selected historical week",historical.to_csv(index=False),f"edge_history_{selected_week}.csv","text/csv")
+            st.dataframe(numbered(historical.head(50)),use_container_width=True)
+            export_section("Historical weekly leadership", historical, "history_"+selected_week)
         except (OSError,ValueError,KeyError,pd.errors.ParserError) as exc:
             st.error(f"Historical snapshot unavailable: {exc}")
     else:
@@ -214,7 +312,8 @@ with tabs[1]:
         for sym in stage_close:
             res=stage2_template(stage_close[sym])
             records.append({"Symbol":sym,"Price-template pass":res["eligible"],"Note":res["reason"]})
-        st.dataframe(pd.DataFrame(records), use_container_width=True)
+        st.dataframe(numbered(pd.DataFrame(records)), use_container_width=True)
+        export_section("Price template diagnostics", pd.DataFrame(records), "price_template")
         st.caption("Stage 2 relative-strength requirement must be verified separately. Price-only pass is not full Stage 2 qualification.")
 with tabs[2]:
     st.subheader("Trade Desk")
@@ -236,11 +335,79 @@ with tabs[2]:
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=compute_setup_scanner(close,volume,high_df=high,low_df=low)
-                st.dataframe(candidates, use_container_width=True)
-                st.download_button("Download VCP research candidates",candidates.to_csv(index=False),"edge_vcp_candidates.csv","text/csv")
+                st.dataframe(numbered(candidates), use_container_width=True)
+                export_section("VCP research candidates", candidates, "vcp_candidates")
+                with st.expander("Candidate historical breakout evidence", expanded=False):
+                    st.caption("Read-only technical outcomes for current setup candidates. "
+                               "This is not a forecast, a VCP backtest, or an executable return study.")
+                    if st.button("Check candidate breakout history", key="edge_candidate_replay"):
+                        symbols = candidates["Symbol"].dropna().astype(str).unique().tolist() if "Symbol" in candidates else []
+                        symbols = [s for s in symbols if s in close.columns]
+                        if not symbols:
+                            st.info("No current candidates with aligned historical OHLCV.")
+                        else:
+                            with st.spinner("Checking historical technical outcomes..."):
+                                research = replay_breakout_rules(
+                                    close[symbols], high[symbols], low[symbols], volume[symbols],
+                                    start=close.index[max(0, len(close)-252)])
+                            st.session_state["edge_candidate_history"] = research
+                            st.session_state["edge_candidate_symbols"] = symbols
+                    candidate_history = st.session_state.get("edge_candidate_history")
+                    if candidate_history is not None:
+                        st.caption("Last evaluated candidate symbols: " +
+                                   str(len(st.session_state.get("edge_candidate_symbols", []))) +
+                                   ". Re-run after refreshing the snapshot or candidate list.")
+                        if not candidate_history.empty:
+                            counts = candidate_history.groupby(["Symbol", "Outcome"]).size().unstack(fill_value=0)
+                            st.dataframe(numbered(counts.reset_index()), use_container_width=True)
+                        else:
+                            st.info("No qualifying historical breakout events for this candidate cohort.")
+                        export_section("Candidate breakout history", candidate_history,
+                                       "edge_candidate_breakout_history")
+
+                membership_file = SNAPSHOT_DIR / "current_membership.csv"
+                provenance_file = SNAPSHOT_DIR / "evidence.json"
+                leadership_frame = snapshot_table("leadership")
+                if membership_file.is_file() and provenance_file.is_file() and leadership_frame is not None:
+                    provenance = json.loads(provenance_file.read_text())
+                    if provenance.get("membership_sha256") == hashlib.sha256(membership_file.read_bytes()).hexdigest() and provenance.get("membership_source"):
+                        members = pd.read_csv(membership_file, dtype={"ISIN Code": str})
+                        period = st.date_input("Financial evidence period end", key="trade_readiness_period")
+                        render_trader_readiness(leadership_frame, members, candidates, period.isoformat(), snapshot_fresh=snapshot_usable)
+                    else:
+                        st.warning("Trading readiness requires verified membership provenance.")
+
             except (ValueError, KeyError) as exc:
                 st.error(str(exc))
 with tabs[3]:
     st.subheader("Portfolio & Journal")
     render_private_portfolio(prices,snapshot_usable)
+with tabs[4]:
+    st.caption("Owner-only financial intake. Research records are not certified.")
+    membership_path = SNAPSHOT_DIR / "current_membership.csv"
+    if not edge_meta or not snapshot_usable or not membership_path.is_file():
+        st.warning("Fresh validated snapshot and official membership with ISIN identities required.")
+    else:
+        try:
+            membership = pd.read_csv(membership_path, dtype={"ISIN Code": str})
+            evidence_path = SNAPSHOT_DIR / "evidence.json"
+            if not evidence_path.is_file():
+                raise ValueError("Official membership provenance missing")
+            provenance = json.loads(evidence_path.read_text())
+            membership_hash = hashlib.sha256(membership_path.read_bytes()).hexdigest()
+            if provenance.get("membership_sha256") != membership_hash or not provenance.get("membership_source"):
+                raise ValueError("Official membership provenance/hash mismatch")
+            ranks = snapshot_table("leadership")
+            if ranks is None:
+                st.warning("No leadership ranks available for evidence review.")
+            else:
+                scored = apply_frozen_v1_scores(ranks.copy())
+                financial_path = SNAPSHOT_DIR / "financial_records.csv"
+                financial_records = pd.read_csv(financial_path).to_dict("records") if financial_path.is_file() else []
+                st.warning("Select the reporting period end from the original company filings. No date is inferred.")
+                period_end = st.date_input("Financial reporting period end", key="edge_financial_period_end")
+                if st.checkbox("Open owner-only evidence intake", value=False):
+                    render_financial_evidence_review(scored, membership, financial_records, period_end.isoformat())
+        except (ValueError, KeyError, OSError, pd.errors.ParserError) as exc:
+            st.error("Financial evidence review unavailable: " + str(exc))
 st.caption("SPERA EDGE is not investment advice. No automatic execution, certified signals or return guarantees.")

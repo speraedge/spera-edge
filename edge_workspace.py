@@ -6,8 +6,14 @@ import math
 import uuid
 import numpy as np
 import pandas as pd
+from edge_exports import numbered, export_section
 from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
+from edge_core.trade_review import journal_quality
+from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
+from edge_core.decision_outcomes import decision_outcomes
+from edge_core.decision_links import validate_trade_link
+from edge_core.link_audit import audit_decision_links
 
 
 def market_report(close):
@@ -145,13 +151,13 @@ class Ledger:
         self.query = query
 
     def initialize(self):
-        self.query('''CREATE TABLE IF NOT EXISTS edge_trade_events (
-            owner_id TEXT NOT NULL, event_id TEXT NOT NULL, revision INTEGER NOT NULL,
-            created_utc TEXT NOT NULL, payload TEXT NOT NULL,
-            PRIMARY KEY(owner_id,event_id), UNIQUE(owner_id,revision))''')
+        from edge_core.private_integrity import initialize_private_schema
+        initialize_private_schema(self.query)
 
     def events(self):
         rows = self.query('SELECT event_id, revision, created_utc, payload FROM edge_trade_events WHERE owner_id=? ORDER BY revision', (self.owner,))
+        from edge_core.private_integrity import validate_revisions
+        validate_revisions(rows)
         return [dict(json.loads(row['payload']), event_id=row['event_id'], revision=row['revision'], created_utc=row['created_utc']) for row in rows]
 
     def append(self, kind, symbol, *, quantity=0, price=0, stop=0, fee=0, note='', event_id=None, expected_revision=None):
@@ -188,6 +194,8 @@ class Ledger:
             quantity, price, stop, fee = (event[key] for key in ('quantity', 'price', 'stop', 'fee'))
             if not all(math.isfinite(float(value)) for value in (quantity, price, stop, fee)) or fee < 0:
                 raise ValueError('Finite transaction values and nonnegative fees required')
+            if kind in ('STOP', 'NOTE') and fee != 0:
+                raise ValueError('Fees must belong to an actual BUY or SELL transaction')
             holding = holdings.setdefault(symbol, {'quantity': 0, 'cost': 0.0, 'stop': 0.0})
             if kind in ('BUY', 'SELL'):
                 if isinstance(quantity, bool) or int(quantity) != quantity or quantity <= 0 or price <= 0:
@@ -239,8 +247,8 @@ def render_market(close):
     st.caption('Defensive: either breadth below 40%; broad participation: both at least 60%; otherwise mixed. Requires 90% 200-session coverage. This is not a benchmark regime or a trading signal.')
     st.write({key: value for key, value in report.items() if key != 'history'})
     st.line_chart(report['history'][['Above_50_Pct', 'Above_200_Pct']])
+    export_section('Market breadth history', report['history'].reset_index(), 'market_breadth_history')
     st.caption('20-session change measures breadth expansion/deterioration in percentage points. Historical breadth uses today’s available universe and has survivorship limitations.')
-    st.download_button('Download market breadth history', report['history'].to_csv(), 'edge_market_breadth.csv', 'text/csv')
 
 
 def leadership_evidence(levels, close, directory=None):
@@ -288,8 +296,8 @@ def render_industries(directory, close):
     try:
         evidence, _, industries, _ = load_current_evidence(directory, close)
         st.caption(f"Official NSE membership fetched {evidence['fetched_utc']}; price session {close.index[-1].date()}. Equal-member research, not sector-index returns. Unknown classifications are not certified.")
-        st.dataframe(industries, use_container_width=True)
-        st.download_button('Download current industry research', industries.to_csv(index=False), 'edge_current_industries.csv', 'text/csv')
+        st.dataframe(numbered(industries), use_container_width=True)
+        export_section('Industry research', industries, 'industry_research')
     except (OSError, ValueError, KeyError, TypeError):
         st.info('Current authoritative industry evidence unavailable. Archived sector rankings remain historical only.')
 
@@ -299,13 +307,13 @@ def render_entries(close, high, low, volume, last_session):
     st.subheader('Completed-session pivots and volume confirmation')
     table = entry_diagnostics(close, high, low, volume, last_session)
     st.caption('Pivot: highest high of 20 prior sessions; volume: at least 1.5× prior 50-session mean. Stop: prior 10-session low. VCP diagnostic: shrinking disjoint 20/10/5-session ranges, final range ≤8%. These are research heuristics, not certified SEPA signals. Gaps and slippage can exceed stop risk.')
-    st.dataframe(table, use_container_width=True)
-    st.download_button('Download entry diagnostics CSV', table.to_csv(index=False), 'edge_entry_diagnostics.csv', 'text/csv')
+    st.dataframe(numbered(table), use_container_width=True)
+    export_section('Entry diagnostics', table, 'entry_diagnostics')
     eligible = table.loc[table['Evidence'].eq('COMPLETED_SESSION_RESEARCH')]
     if not eligible.empty:
         watch = st.multiselect('Candidate watchlist', eligible['Symbol'].tolist())
         if watch:
-            st.download_button('Download selected watchlist', eligible[eligible['Symbol'].isin(watch)].to_csv(index=False), 'edge_watchlist.csv', 'text/csv')
+            export_section('Selected watchlist', eligible[eligible['Symbol'].isin(watch)], 'selected_watchlist')
     st.subheader('Risk-based position plan')
     st.caption('Planning inputs only. Enter actual account equity, total marked exposure and total open mark-to-stop risk. Private ledger totals are available after sign-in on Portfolio & Journal.')
     equity = st.number_input('Planning equity (INR)', min_value=1.0, value=500000.0)
@@ -360,15 +368,106 @@ def render_private_portfolio(close, snapshot_usable):
         ledger = Ledger(owner, query)
         ledger.initialize()
         events = ledger.events()
+        st.subheader('Private journal completeness')
+        quality = journal_quality(events)
+        st.caption('Flags BUY entries without an accompanying entry note. A note is not proof of rule compliance; research signals are not matched to fills.')
+        st.dataframe(numbered(quality), use_container_width=True)
+        export_section('Private journal completeness', quality, 'private_journal_completeness')
+        st.subheader('Setup decision journal')
+        st.caption('Record WATCH, TAKE, REJECT or MISSED decisions separately from brokerage fills. Owner-only; no automatic trade is created.')
+        query("""CREATE TABLE IF NOT EXISTS edge_setup_decisions (
+            owner_id TEXT NOT NULL, decision_id TEXT NOT NULL,
+            created_utc TEXT NOT NULL, payload TEXT NOT NULL,
+            PRIMARY KEY(owner_id, decision_id))""")
+        decisions = query('SELECT decision_id, created_utc, payload FROM edge_setup_decisions WHERE owner_id=? ORDER BY created_utc DESC', (owner,))
+        decision_rows = [dict(json.loads(item['payload']), created_utc=item['created_utc'], decision_id=item['decision_id']) for item in decisions]
+        st.dataframe(numbered(pd.DataFrame(decision_rows)), use_container_width=True)
+        export_section('Private setup decisions', pd.DataFrame(decision_rows), 'private_setup_decisions')
+        if decision_rows:
+            st.subheader('Dated decision outcomes')
+            st.caption('Close-to-close observations after 5, 10 or 20 trading sessions, not actual trade returns. No future sessions are imputed. Decision records are linked by their unique IDs and exact dates.')
+            if not snapshot_usable or close is None:
+                st.warning('Fresh OHLCV snapshot required for decision outcomes.')
+            else:
+                outcome_horizon = st.selectbox('Forward observation horizon (sessions)', (5, 10, 20))
+                observed = decision_outcomes(decision_rows, close, horizon=outcome_horizon)
+                st.dataframe(numbered(observed), use_container_width=True)
+                export_section('Private dated decision outcomes', observed, 'private_decision_outcomes')
+        st.subheader('Explicit decision-to-trade links')
+        st.caption('A TAKE decision is not a fill. Link only an actual BUY recorded in your private ledger. No automatic symbol-only matching.')
+        query("""CREATE TABLE IF NOT EXISTS edge_decision_trade_links (
+            owner_id TEXT NOT NULL, decision_id TEXT NOT NULL, event_id TEXT NOT NULL,
+            created_utc TEXT NOT NULL, PRIMARY KEY(owner_id, decision_id, event_id),
+            UNIQUE(owner_id, event_id))""")
+        saved_links = query('SELECT decision_id, event_id, created_utc FROM edge_decision_trade_links WHERE owner_id=? ORDER BY created_utc DESC', (owner,))
+        st.dataframe(numbered(pd.DataFrame(saved_links)), use_container_width=True)
+        export_section('Private decision trade links', pd.DataFrame(saved_links), 'private_decision_trade_links')
+        link_audit = audit_decision_links(decision_rows, events, saved_links)
+        if not link_audit.empty:
+            st.subheader('Decision-trade link integrity')
+            st.dataframe(numbered(link_audit), use_container_width=True)
+            export_section('Private decision link audit', link_audit, 'private_decision_link_audit')
+            issues = link_audit[~link_audit['Status'].isin(['VALID', 'UNLINKED_BUY'])]
+            if not issues.empty:
+                st.error(f'{len(issues)} inconsistent decision-trade links found. Review before relying on linked records.')
+            elif link_audit['Status'].eq('UNLINKED_BUY').any():
+                st.info('Some recorded BUY events are not linked to a setup decision; this is permitted.')
+        take_options = [d['decision_id'] for d in decision_rows if d.get('decision') == 'TAKE']
+        buy_options = [e['event_id'] for e in events if e.get('kind') == 'BUY']
+        if take_options and buy_options:
+            with st.form('edge_decision_trade_link_form'):
+                chosen_decision = st.selectbox('TAKE decision ID', take_options)
+                chosen_event = st.selectbox('Recorded BUY event ID', buy_options)
+                link_submit = st.form_submit_button('Link recorded trade')
+            if link_submit:
+                try:
+                    validate_trade_link(decision_rows, events, chosen_decision, chosen_event)
+                    duplicate = query('SELECT decision_id FROM edge_decision_trade_links WHERE owner_id=? AND event_id=?', (owner, chosen_event))
+                    if duplicate:
+                        raise ValueError('This BUY event is already linked; no changes made')
+                    linked = query("""INSERT INTO edge_decision_trade_links
+                        (owner_id, decision_id, event_id, created_utc) VALUES (?, ?, ?, ?)
+                        ON CONFLICT DO NOTHING RETURNING event_id""",
+                        (owner, chosen_decision, chosen_event, datetime.now(timezone.utc).isoformat()))
+                    if not linked:
+                        raise ValueError('Link already exists or conflicts with another record')
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        else:
+            st.info('Record a TAKE decision and a BUY event before linking them.')
+        if 'edge_decision_id' not in st.session_state:
+            st.session_state['edge_decision_id'] = str(uuid.uuid4())
+        with st.form('edge_setup_decision_form'):
+            dsymbol = st.text_input('Setup symbol').strip().upper()
+            dsession = st.date_input('Setup decision session')
+            ddecision = st.selectbox('Setup decision', DECISIONS)
+            dreason = st.selectbox('Primary reason', REASONS)
+            dnote = st.text_area('Decision rationale', max_chars=3000)
+            save_decision = st.form_submit_button('Record setup decision')
+        if save_decision:
+            try:
+                payload = validate_decision(dsymbol, dsession, ddecision, dreason, dnote)
+                inserted = query("""INSERT INTO edge_setup_decisions
+                    (owner_id, decision_id, created_utc, payload)
+                    VALUES (?, ?, ?, ?) ON CONFLICT(owner_id, decision_id) DO NOTHING
+                    RETURNING decision_id""",
+                    (owner, st.session_state['edge_decision_id'],
+                     datetime.now(timezone.utc).isoformat(), json.dumps(payload)))
+                if not inserted:
+                    raise ValueError('Decision already submitted; refresh to inspect')
+                st.session_state['edge_decision_id'] = str(uuid.uuid4())
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
-        st.dataframe(positions, use_container_width=True)
+        st.dataframe(numbered(positions), use_container_width=True)
+        export_section('Private positions', positions, 'private_positions')
         st.caption('Average-cost accounting includes entry/exit fees. Unrealized P&L excludes estimated exit costs. Open risk uses latest mark to stop, floored at zero; stops do not guarantee execution.')
         if not summary['marks_complete']:
             st.warning('Missing or stale marks: exposure, unrealized P&L and risk are unavailable. New-entry sizing is disabled.')
-        if not positions.empty:
-            st.download_button('Export private positions', positions.to_csv(index=False), 'edge_private_positions.csv', 'text/csv')
         capital = st.number_input('Account equity (INR)', min_value=1.0, value=500000.0)
         risk_pct = st.number_input('Permitted risk per trade (%)', min_value=0.1, max_value=5.0, value=1.0)
         heat = st.number_input('Portfolio risk ceiling (%)', min_value=0.1, max_value=10.0, value=5.0)
@@ -411,14 +510,17 @@ def render_private_portfolio(close, snapshot_usable):
                 st.error(str(exc))
         if events:
             history = pd.DataFrame(events)
-            st.dataframe(history, use_container_width=True)
-            st.download_button('Export private transactions and review history', history.to_csv(index=False), 'edge_private_ledger.csv', 'text/csv')
+            st.dataframe(numbered(history), use_container_width=True)
+            export_section('Private trade journal', history, 'private_trade_journal')
     except Exception:
         st.error('Private ledger unavailable. No write success is assumed; retry after checking EDGE D1 configuration.')
 
 
 def verify_d1():
-    from edge_core.d1_store import d1_query
+    from edge_core.d1_store import d1_query as live_query, D1ConstraintError
+    from edge_core.private_integrity import synthetic_private_query, PRIVATE_TABLES
+    namespace = 'edge_audit_' + uuid.uuid4().hex + '_'
+    d1_query = synthetic_private_query(live_query, namespace)
     owner = 'EDGE_TECHNICAL_PROBE_' + str(uuid.uuid4())
     ledger = Ledger(owner, d1_query)
     ledger.initialize()
@@ -426,6 +528,65 @@ def verify_d1():
     fresh = Ledger(owner, d1_query).events()
     if len(fresh) != 1 or fresh[0]['event_id'] != event_id or Ledger(owner + '_OTHER', d1_query).events():
         raise RuntimeError('D1 persistence or owner-isolation verification failed')
+    # Isolated synthetic setup and fill records verify the same D1 tables used by the UI.
+    d1_query("""CREATE TABLE IF NOT EXISTS edge_setup_decisions (
+        owner_id TEXT NOT NULL, decision_id TEXT NOT NULL,
+        created_utc TEXT NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY(owner_id, decision_id))""")
+    d1_query("""CREATE TABLE IF NOT EXISTS edge_decision_trade_links (
+        owner_id TEXT NOT NULL, decision_id TEXT NOT NULL, event_id TEXT NOT NULL,
+        created_utc TEXT NOT NULL, PRIMARY KEY(owner_id, decision_id, event_id),
+        UNIQUE(owner_id, event_id))""")
+    decision_id = str(uuid.uuid4())
+    buy_id = str(uuid.uuid4())
+    synthetic_session = datetime.now(timezone.utc).date().isoformat()
+    payload = validate_decision('TECHNICAL-PROBE', synthetic_session, 'TAKE',
+                                'OTHER', 'Synthetic D1 verification only')
+    d1_query("""INSERT INTO edge_setup_decisions(owner_id,decision_id,created_utc,payload)
+        VALUES(?,?,?,?)""", (owner, decision_id, datetime.now(timezone.utc).isoformat(),
+                              json.dumps(payload)))
+    if d1_query('SELECT decision_id FROM edge_setup_decisions WHERE owner_id=? AND decision_id=?',
+                (owner + '_OTHER', decision_id)):
+        raise RuntimeError('Decision owner isolation failed')
+    buy_ledger = Ledger(owner, d1_query)
+    buy_ledger.append('BUY', 'TECHNICAL-PROBE', quantity=1, price=100, stop=90,
+                      note='Synthetic D1 verification only', event_id=buy_id)
+    decision_rows = [dict(payload, decision_id=decision_id)]
+    validate_trade_link(decision_rows, buy_ledger.events(), decision_id, buy_id)
+    d1_query("""INSERT INTO edge_decision_trade_links(owner_id,decision_id,event_id,created_utc)
+        VALUES(?,?,?,?)""", (owner, decision_id, buy_id, datetime.now(timezone.utc).isoformat()))
+    links = d1_query('SELECT decision_id,event_id FROM edge_decision_trade_links WHERE owner_id=?', (owner,))
+    if not any(item['decision_id'] == decision_id and item['event_id'] == buy_id for item in links):
+        raise RuntimeError('Decision-trade link round-trip failed')
+    if d1_query('SELECT event_id FROM edge_decision_trade_links WHERE owner_id=?',
+                (owner + '_OTHER',)):
+        raise RuntimeError('Link owner isolation failed')
+    duplicate = d1_query("""INSERT INTO edge_decision_trade_links(owner_id,decision_id,event_id,created_utc)
+        VALUES(?,?,?,?) ON CONFLICT DO NOTHING RETURNING event_id""",
+        (owner, decision_id, buy_id, datetime.now(timezone.utc).isoformat()))
+    if duplicate:
+        raise RuntimeError('Duplicate decision-trade link was accepted')
+    audit = audit_decision_links(decision_rows, buy_ledger.events(), links)
+    if audit['Status'].tolist() != ['VALID']:
+        raise RuntimeError('Synthetic link integrity audit failed')
+    for table in PRIVATE_TABLES:
+        for sql, params in ((f'UPDATE {table} SET created_utc=? WHERE owner_id=?', ('invalid', owner)),
+                            (f'DELETE FROM {table} WHERE owner_id=?', (owner,))):
+            try:
+                d1_query(sql, params)
+            except Exception as exc:
+                if not isinstance(exc, D1ConstraintError) and 'Private records are append-only' not in str(exc):
+                    raise RuntimeError('Append-only probe could not verify a constraint rejection') from None
+            else:
+                raise RuntimeError('Private append-only protection missing')
+    if len(buy_ledger.events()) != 2 or len(d1_query('SELECT decision_id FROM edge_setup_decisions WHERE owner_id=?', (owner,))) != 1:
+        raise RuntimeError('Synthetic private records changed during integrity probe')
+    try:
+        buy_ledger.append('SELL', 'TECHNICAL-PROBE', quantity=1, price=100, expected_revision=0)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError('Stale revision was accepted')
     published = d1_query('SELECT run_id, rows_count FROM edge_snapshot_runs ORDER BY generated_utc DESC LIMIT 1')
     if not published:
         raise RuntimeError('No published EDGE D1 research snapshot')
@@ -433,7 +594,11 @@ def verify_d1():
     if not count or int(count[0]['n']) != int(published[0]['rows_count']):
         raise RuntimeError('Published D1 research row count mismatch')
     print(json.dumps({'ledger_write_read_verified': True, 'owner_isolation_verified': True,
-                      'synthetic_probe_event': event_id, 'research_run': published[0]['run_id'], 'research_rows': count[0]['n']}))
+                      'synthetic_probe_event': event_id, 'decision_link_verified': True,
+                      'decision_owner_isolation_verified': True, 'duplicate_link_rejected': True,
+                      'append_only_verified': True, 'stale_revision_rejected': True,
+                      'synthetic_table_namespace': namespace,
+                      'research_run': published[0]['run_id'], 'research_rows': count[0]['n']}))
 
 
 if __name__ == '__main__':

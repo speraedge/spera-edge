@@ -27,7 +27,9 @@ def review_events(events_csv, output_dir, universe_symbols):
     raw = source.read_bytes()
     with source.open(encoding="utf-8-sig", newline="") as handle:
         records = list(csv.DictReader(handle))
-    universe = {str(x).strip().upper() for x in universe_symbols}
+    identities = ({str(k).strip().upper(): str(v).strip().upper() for k, v in universe_symbols.items()}
+                  if hasattr(universe_symbols, "items") else None)
+    universe = set(identities) if identities is not None else {str(x).strip().upper() for x in universe_symbols}
     findings = []
     seen = defaultdict(list)
     for number, record in enumerate(records, start=2):
@@ -41,6 +43,8 @@ def review_events(events_csv, output_dir, universe_symbols):
             status = "INVALID_EVENT_FIELDS"
         elif symbol not in universe:
             status = "OUTSIDE_CURRENT_UNIVERSE_REVIEW"
+        elif identities is not None and isin and identities.get(symbol) != isin:
+            status = "ISIN_MISMATCH_REVIEW"
         elif not url.startswith("https://"):
             status = "MISSING_OFFICIAL_SOURCE"
         elif any(word in purpose.lower() for word in ("cancel", "withdraw", "revok")):

@@ -8,6 +8,21 @@ from edge_core.corporate_action_evidence import review_events
 
 
 class CorporateActionEvidenceTests(unittest.TestCase):
+    def test_official_isin_mismatch_is_quarantined(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "events.csv"
+            with source.open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["symbol", "isin", "purpose", "ex_date", "source_url"])
+                writer.writeheader()
+                writer.writerow({"symbol": "ABC", "isin": "WRONG", "purpose": "Split 1:2",
+                                 "ex_date": "2026-10-20", "source_url": "https://www.nseindia.com/example"})
+            review_events(source, root / "out", {"ABC": "INE000A00001"})
+            with (root / "out" / "corporate_action_review.csv").open(newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertEqual(rows[0]["status"], "ISIN_MISMATCH_REVIEW")
+            self.assertEqual(rows[0]["approved"], "False")
+
     def test_fail_closed_and_provenance(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

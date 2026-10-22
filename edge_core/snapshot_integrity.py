@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import pandas as pd
+from edge_core.ohlcv_integrity import audit_ohlcv
 
 def validate_snapshot(directory="data/latest"):
     root = Path(directory)
@@ -55,6 +56,8 @@ def validate_snapshot(directory="data/latest"):
             raise ValueError("OHLCV alignment mismatch: " + name)
     if str(pd.Timestamp(close.index.max()).date()) != str(pd.Timestamp(meta["last_session"]).date()):
         raise ValueError("Snapshot session does not match price data")
+    audit_ohlcv(frames["close"], frames["high"], frames["low"], frames["volume"],
+                expected_last_session=meta["last_session"])
     if not set(close.columns).issubset(set(ranks["Symbol"])):
         raise ValueError("OHLCV symbols absent from leadership")
     return {"expected":expected,"retrieved":retrieved,"rows":len(ranks),"sessions":len(close)}

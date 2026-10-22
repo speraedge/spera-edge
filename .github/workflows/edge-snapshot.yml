@@ -39,6 +39,12 @@ jobs:
           EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
           EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
         run: python -m tools.publish_edge_d1
+      - name: Verify immutable snapshot manifest in independent EDGE D1
+        env:
+          EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
+          EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
+          EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
+        run: python -m tools.edge_snapshot_publication --directory data/latest --publish
       - name: Publish non-secret research snapshot to EDGE repository
         run: |
           git config user.name "spera-edge-bot"

@@ -9,6 +9,12 @@ from edge_core.upstox import fetch_daily_candles
 def build(mapping, start, end, outdir, token):
     if not mapping or len(mapping) != len(set(mapping)):
         raise ValueError("Provide a nonempty, unique symbol-to-instrument mapping.")
+    # Validate the complete mapping before any provider request or output write.
+    normalized = [str(symbol).strip().upper() for symbol in mapping]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("Duplicate symbols after normalization")
+    if any(not symbol.replace("_", "").isalnum() for symbol in normalized):
+        raise ValueError("Invalid symbol in mapping")
     out = Path(outdir)
     out.mkdir(parents=True, exist_ok=True)
     frames = {}
@@ -25,6 +31,8 @@ def build(mapping, start, end, outdir, token):
         frame.index = pd.to_datetime(frame.index)
         frames[symbol] = frame
         coverage[symbol] = {"rows": len(frame), "latest": str(frame.index.max().date()), "status": "RESEARCH_ONLY"}
+    if not frames or len(frames) != len(mapping):
+        raise ValueError("Incomplete provider coverage; snapshot publication refused")
     for field in ("open", "high", "low", "close", "volume"):
         wide = pd.DataFrame({f"{symbol}.NS": frame[field] for symbol, frame in frames.items()})
         wide.index.name = "Date"
