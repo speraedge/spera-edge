@@ -25,8 +25,15 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     missing=mapping.loc[mapping["Mapping_Status"].ne("MAPPED"),["Symbol","ISIN"]].to_dict("records")
     if not (495<=expected<=505):
         raise RuntimeError(f"Official NIFTY 500 count outside safe range: {expected}")
+    # Preserve official source rows, but explicitly distinguish the known NSE
+    # placeholder from a genuine provider-mapping failure. Never synthesize prices.
+    known_placeholder = {"Symbol": "DUMMYHEG", "ISIN": "DUM545A01024"}
+    placeholders = [row for row in missing if row == known_placeholder]
+    unresolved_identities = [row for row in missing if row != known_placeholder]
     if missing:
-        print(json.dumps({"official_count":expected,"mapped":expected-len(missing),"missing_identities":missing},indent=2))
+        print(json.dumps({"official_count":expected,"mapped":expected-len(missing),
+                          "official_placeholders":placeholders,
+                          "unresolved_identities":unresolved_identities},indent=2))
     # Original SPERA audit verified 501 constituents and one provider failure.
     if expected-len(missing)<495:
         raise RuntimeError("NIFTY 500 mapped identity coverage below safe threshold")
@@ -80,6 +87,8 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     metadata={
         "universe":"NIFTY_500","expected":expected,"mapped":len(mapping_ok),
         "retrieved":successful,"retrieval_failures":failures,
+        "official_placeholders":placeholders,
+        "unresolved_identities":unresolved_identities,
         "research_pass":int(research["Data_Quality"].eq("PASS").sum()),
         "research_review":int(research["Data_Quality"].eq("REVIEW").sum()),
         "research_fail":int(research["Data_Quality"].eq("FAIL").sum()),
