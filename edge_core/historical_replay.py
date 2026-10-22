@@ -37,8 +37,12 @@ def replay_breakout_rules(close, high, low, volume, *, start=None, end=None,
         prior_lows_valid = l.shift(1).gt(0).rolling(10, min_periods=10).sum().eq(10)
         candidates = c.gt(pivot) & v.ge(baseline * volume_multiple) & baseline.gt(0) & prior_valid & prior_lows_valid
         candidates &= c.gt(0) & h.ge(c) & l.gt(0) & l.le(c) & v.ge(0)
+        last_event = -horizon - 1
         for i in np.flatnonzero(candidates.to_numpy()):
-            if i < 50 or not lower <= dates[i] <= upper:
+            if i < 50 or i - last_event <= horizon:
+                continue
+            last_event = i
+            if not lower <= dates[i] <= upper:
                 continue
             future = c.iloc[i+horizon] if i+horizon < len(c) else np.nan
             path = l.iloc[i+1:i+horizon+1]
