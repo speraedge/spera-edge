@@ -13,6 +13,7 @@ from edge_core.trade_review import journal_quality
 from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
 from edge_core.decision_outcomes import decision_outcomes
 from edge_core.decision_links import validate_trade_link
+from edge_core.link_audit import audit_decision_links
 
 
 def market_report(close):
@@ -399,6 +400,16 @@ def render_private_portfolio(close, snapshot_usable):
         saved_links = query('SELECT decision_id, event_id, created_utc FROM edge_decision_trade_links WHERE owner_id=? ORDER BY created_utc DESC', (owner,))
         st.dataframe(numbered(pd.DataFrame(saved_links)), use_container_width=True)
         export_section('Private decision trade links', pd.DataFrame(saved_links), 'private_decision_trade_links')
+        link_audit = audit_decision_links(decision_rows, events, saved_links)
+        if not link_audit.empty:
+            st.subheader('Decision-trade link integrity')
+            st.dataframe(numbered(link_audit), use_container_width=True)
+            export_section('Private decision link audit', link_audit, 'private_decision_link_audit')
+            issues = link_audit[~link_audit['Status'].isin(['VALID', 'UNLINKED_BUY'])]
+            if not issues.empty:
+                st.error(f'{len(issues)} inconsistent decision-trade links found. Review before relying on linked records.')
+            elif link_audit['Status'].eq('UNLINKED_BUY').any():
+                st.info('Some recorded BUY events are not linked to a setup decision; this is permitted.')
         take_options = [d['decision_id'] for d in decision_rows if d.get('decision') == 'TAKE']
         buy_options = [e['event_id'] for e in events if e.get('kind') == 'BUY']
         if take_options and buy_options:
