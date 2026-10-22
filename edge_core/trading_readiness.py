@@ -39,7 +39,7 @@ def trading_readiness(scored, membership, financial_records, period_end, *, acqu
     risk_plan = None
     if risk_inputs is not None:
         required = {"capital", "risk_pct", "entry", "stop", "committed_risk"}
-        if not isinstance(risk_inputs, dict) or not required.issubset(risk_inputs):
+        if not isinstance(risk_inputs, dict) or not required.issubset(risk_inputs) or len(shortlist) != 1:
             raise ValueError("Incomplete risk planning inputs")
         if not snapshot_fresh:
             raise ValueError("Risk planning requires a fresh validated snapshot")
