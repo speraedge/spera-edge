@@ -9,7 +9,7 @@ class CertificationGateTests(unittest.TestCase):
             "symbol": "ABC", "isin": "INE000A01001",
             "period_end": "2026-09-30", "published_on": "2026-10-20",
             "acquisition_status": "ACQUIRED_UNVERIFIED",
-            "reconciliation": dict(REQUIRED),
+            "reconciliation": {**REQUIRED, "identity_status": "FULL_IDENTITY_VERIFIED"},
         }
 
     def test_reconciled_without_independent_review_remains_blocked(self):
