@@ -301,13 +301,14 @@ def render_entries(close, high, low, volume, last_session):
     st.subheader('Completed-session pivots and volume confirmation')
     table = entry_diagnostics(close, high, low, volume, last_session)
     st.caption('Pivot: highest high of 20 prior sessions; volume: at least 1.5× prior 50-session mean. Stop: prior 10-session low. VCP diagnostic: shrinking disjoint 20/10/5-session ranges, final range ≤8%. These are research heuristics, not certified SEPA signals. Gaps and slippage can exceed stop risk.')
-    st.dataframe(table, use_container_width=True)
+    st.dataframe(numbered(table), use_container_width=True)
+    export_section('Entry diagnostics', table, 'entry_diagnostics')
     st.download_button('Download entry diagnostics CSV', table.to_csv(index=False), 'edge_entry_diagnostics.csv', 'text/csv')
     eligible = table.loc[table['Evidence'].eq('COMPLETED_SESSION_RESEARCH')]
     if not eligible.empty:
         watch = st.multiselect('Candidate watchlist', eligible['Symbol'].tolist())
         if watch:
-            st.download_button('Download selected watchlist', eligible[eligible['Symbol'].isin(watch)].to_csv(index=False), 'edge_watchlist.csv', 'text/csv')
+            export_section('Selected watchlist', eligible[eligible['Symbol'].isin(watch)], 'selected_watchlist')
     st.subheader('Risk-based position plan')
     st.caption('Planning inputs only. Enter actual account equity, total marked exposure and total open mark-to-stop risk. Private ledger totals are available after sign-in on Portfolio & Journal.')
     equity = st.number_input('Planning equity (INR)', min_value=1.0, value=500000.0)
