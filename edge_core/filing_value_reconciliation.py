@@ -11,7 +11,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 
-def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir):
+def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir, document_review_csv=None):
     with Path(financials_csv).open(encoding="utf-8-sig", newline="") as stream:
         financials = list(csv.DictReader(stream))
     with Path(transcriptions_csv).open(encoding="utf-8-sig", newline="") as stream:
@@ -21,6 +21,18 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir):
         if not reader.fieldnames or not required.issubset(reader.fieldnames):
             raise ValueError("Transcriptions missing required columns")
         transcriptions = list(reader)
+    documents = defaultdict(list)
+    if document_review_csv is not None:
+        with Path(document_review_csv).open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream)
+            required_docs = {"symbol", "isin", "period_end", "basis", "source_url",
+                             "computed_sha256", "status"}
+            if not reader.fieldnames or not required_docs.issubset(reader.fieldnames):
+                raise ValueError("Filing document review missing required columns")
+            for document in reader:
+                document_key = tuple(str(document.get(field) or "").strip().upper()
+                                     for field in ("symbol", "isin", "period_end", "basis", "source_url"))
+                documents[document_key].append(document)
     def key(record):
         return tuple(str(record.get(field) or "").strip().upper() for field in
                      ("symbol", "isin", "period_end", "period_type", "basis",
@@ -39,6 +51,18 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir):
             digest = str(item["document_sha256"]).strip().lower()
             if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                 status = "INVALID_DOCUMENT_DIGEST"
+            elif document_review_csv is not None and not documents.get(
+                tuple(str(financial.get(field) or "").strip().upper()
+                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))):
+                status = "MISSING_REVIEWED_DOCUMENT"
+            elif document_review_csv is not None and (
+                len(documents[tuple(str(financial.get(field) or "").strip().upper()
+                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))]) != 1
+                or documents[tuple(str(financial.get(field) or "").strip().upper()
+                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))][0]["status"] != "REVIEW_ORIGINAL_DOCUMENT"
+                or documents[tuple(str(financial.get(field) or "").strip().upper()
+                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))][0]["computed_sha256"].lower() != digest):
+                status = "DOCUMENT_PROVENANCE_MISMATCH"
             else:
                 try:
                     revenue_match = Decimal(str(financial["revenue"])) == Decimal(str(item["revenue"]))
