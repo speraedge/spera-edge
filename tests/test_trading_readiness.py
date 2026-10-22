@@ -1,0 +1,71 @@
+"""Integrated trader handoff acceptance; synthetic fixtures are not market evidence."""
+import unittest
+import pandas as pd
+from edge_core.trading_readiness import trading_readiness
+
+class TradingReadinessTests(unittest.TestCase):
+    def setUp(self):
+        self.scored = pd.DataFrame([
+            {"Symbol": "AAA", "Percentile": 95, "Data_Quality": "PASS"},
+            {"Symbol": "BBB", "Percentile": 90, "Data_Quality": "REVIEW"},
+            {"Symbol": "CCC", "Percentile": 60, "Data_Quality": "PASS"},
+        ])
+        self.membership = pd.DataFrame([
+            {"Symbol": "AAA", "ISIN Code": "INE000A01001"},
+            {"Symbol": "BBB", "ISIN Code": "INE000B01002"},
+            {"Symbol": "CCC", "ISIN Code": "INE000C01003"},
+        ])
+        self.records = []
+
+    def run_case(self, acquisition=None):
+        return trading_readiness(self.scored, self.membership, self.records,
+                                 "2026-09-30", acquisition=acquisition)
+
+    def test_shortlist_filters_but_never_issues_trade(self):
+        result = self.run_case()
+        self.assertEqual(result["candidate_count"], 2)
+        self.assertEqual([x["symbol"] for x in result["candidates"]], ["AAA", "BBB"])
+        self.assertTrue(all(x["decision"] == "REVIEW_REQUIRED" for x in result["candidates"]))
+        self.assertTrue(all(not x["eligible_for_trading"] for x in result["candidates"]))
+        self.assertFalse(result["ready_for_trading_signals"])
+
+    def test_official_pdf_acquisition_does_not_promote_trading(self):
+        queue = [
+            {"symbol": symbol, "isin": isin, "period_end": "2026-09-30",
+             "period_type": "Q", "basis": "CONSOLIDATED"}
+            for symbol, isin in [("AAA", "INE000A01001"), ("BBB", "INE000B01002")]
+        ]
+        acquisition = {"certified": False, "ready_for_trading_signals": False,
+                       "review": [
+                           {**queue[0], "certified": False,
+                            "acquisition_status": "ACQUIRED_UNVERIFIED",
+                            "source_url": "https://nsearchives.nseindia.com/aaa.pdf",
+                            "document_sha256": "a" * 64},
+                           {**queue[1], "certified": False,
+                            "acquisition_status": "HTTP_403"},
+                       ]}
+        result = self.run_case(acquisition)
+        self.assertEqual(result["candidates"][0]["acquisition_status"], "ACQUIRED_UNVERIFIED")
+        self.assertEqual(result["candidates"][1]["acquisition_status"], "HTTP_403")
+        self.assertTrue(all(not row["certified"] for row in result["candidates"]))
+
+    def test_wrong_identity_and_certification_claim_fail_closed(self):
+        for record in (
+            {"symbol": "OTHER", "isin": "INE000Z01001"},
+            {"symbol": "AAA", "isin": "INE000A01001", "certified": True},
+        ):
+            payload = {"certified": False, "review": [
+                {"period_end": "2026-09-30", "period_type": "Q",
+                 "basis": "CONSOLIDATED", "acquisition_status": "HTTP_403",
+                 "certified": False, **record}]}
+            with self.assertRaises(ValueError):
+                self.run_case(payload)
+
+    def test_duplicate_membership_rejected(self):
+        membership = pd.concat([self.membership, self.membership.iloc[[0]]],
+                               ignore_index=True)
+        with self.assertRaises(ValueError):
+            trading_readiness(self.scored, membership, [], "2026-09-30")
+
+if __name__ == "__main__":
+    unittest.main()
