@@ -6,8 +6,10 @@ Financial evidence is a separate gate and cannot promote a technical candidate.
 from edge_core.evidence_shortlist import evidence_shortlist
 from edge_core.manual_evidence_queue import build_queue
 from edge_core.acquisition_review_import import validate_acquisition_import
+from edge_core.portfolio import position_size
+from edge_core.portfolio_risk import risk_budget
 
-def trading_readiness(scored, membership, financial_records, period_end, *, acquisition=None, technical_evidence=None, snapshot_fresh=False, setup_evidence=None):
+def trading_readiness(scored, membership, financial_records, period_end, *, acquisition=None, technical_evidence=None, snapshot_fresh=False, setup_evidence=None, risk_inputs=None):
     """Return auditable per-company research status and explicit missing gates."""
     shortlist = evidence_shortlist(scored, membership)
     queue = build_queue(shortlist, financial_records, period_end)
@@ -34,6 +36,23 @@ def trading_readiness(scored, membership, financial_records, period_end, *, acqu
             raise ValueError("Duplicate setup scanner ticker")
         setups = {str(row["Ticker"]).strip().upper(): row
                   for _, row in setup_evidence.iterrows()}
+    risk_plan = None
+    if risk_inputs is not None:
+        required = {"capital", "risk_pct", "entry", "stop", "committed_risk"}
+        if not isinstance(risk_inputs, dict) or not required.issubset(risk_inputs):
+            raise ValueError("Incomplete risk planning inputs")
+        if not snapshot_fresh:
+            raise ValueError("Risk planning requires a fresh validated snapshot")
+        budget = risk_budget(risk_inputs["capital"], risk_inputs["risk_pct"],
+                             risk_inputs["committed_risk"])
+        sizing = position_size(risk_inputs["capital"], risk_inputs["risk_pct"],
+                               risk_inputs["entry"], risk_inputs["stop"])
+        max_qty = int(budget["new_trade_budget"] // sizing["risk_per_share"])
+        qty = min(sizing["quantity"], max_qty)
+        risk_plan = {"quantity": qty, "planned_risk": qty * sizing["risk_per_share"],
+                     "available_risk": budget["available_risk"],
+                     "portfolio_ceiling": budget["portfolio_ceiling"],
+                     "research_only": True}
     rows = []
     for candidate, request in zip(shortlist, queue):
         if (candidate["symbol"], candidate["isin"]) != (request["symbol"], request["isin"]):
@@ -53,7 +72,7 @@ def trading_readiness(scored, membership, financial_records, period_end, *, acqu
             "vcp_pivot_volume": "SETUP_RESEARCH_ONLY" if setup_review else "NOT_VERIFIED",
             "financial_evidence": "REVIEW_REQUIRED",
             "corporate_actions": "NOT_VERIFIED",
-            "trade_risk": "NOT_VERIFIED",
+            "trade_risk": "SIZING_RESEARCH_ONLY" if risk_plan is not None else "NOT_VERIFIED",
         }
         rows.append({
             "symbol": candidate["symbol"], "isin": candidate["isin"],
@@ -61,6 +80,7 @@ def trading_readiness(scored, membership, financial_records, period_end, *, acqu
             "evidence_reason": request["reason"],
             "acquisition_status": status, "gates": gates,
             "setup_score": float(setup["VCP_Score"]) if setup_review else None,
+            "risk_plan": risk_plan,
             "decision": "REVIEW_REQUIRED",
             "eligible_for_trading": False, "certified": False,
         })
