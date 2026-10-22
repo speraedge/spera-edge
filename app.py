@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
 from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
-from edge_core.historical_leadership_bridge import historical_leadership_context
+from edge_core.historical_leadership_bridge import historical_leadership_context, leadership_breakout_summary
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
 from edge_core.portfolio import position_size, journal_entry
@@ -97,6 +97,11 @@ with tabs[0]:
                     st.subheader("Breakouts vs earlier SperaWisdom leadership")
                     st.caption("Strictly prior weekly rank only; missing history stays missing. "
                                "Historical Wisdom research is read-only, not an EDGE trading certification.")
+                    grouped = leadership_breakout_summary(linked)
+                    st.caption("Historical outcome groups use strictly earlier weekly rankings. "
+                               "Missing ranks and unresolved outcomes are never counted as failures.")
+                    st.dataframe(numbered(grouped), use_container_width=True)
+                    export_section("Leadership breakout comparison", grouped, "edge_leadership_breakout_summary")
                     st.dataframe(numbered(linked.tail(100)), use_container_width=True)
                     export_section("Breakouts with prior leadership", linked, "edge_breakout_leadership")
                 except (OSError, ValueError, KeyError, pd.errors.ParserError) as exc:
