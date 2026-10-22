@@ -369,7 +369,6 @@ def render_private_portfolio(close, snapshot_usable):
         st.caption('Average-cost accounting includes entry/exit fees. Unrealized P&L excludes estimated exit costs. Open risk uses latest mark to stop, floored at zero; stops do not guarantee execution.')
         if not summary['marks_complete']:
             st.warning('Missing or stale marks: exposure, unrealized P&L and risk are unavailable. New-entry sizing is disabled.')
-        if not positions.empty:
         capital = st.number_input('Account equity (INR)', min_value=1.0, value=500000.0)
         risk_pct = st.number_input('Permitted risk per trade (%)', min_value=0.1, max_value=5.0, value=1.0)
         heat = st.number_input('Portfolio risk ceiling (%)', min_value=0.1, max_value=10.0, value=5.0)
