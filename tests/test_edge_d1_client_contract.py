@@ -27,6 +27,13 @@ class Session:
 
 
 class D1ClientContractTests(unittest.TestCase):
+    def test_append_only_rejection_is_distinct_from_transport_failure(self):
+        from edge_core.d1_store import D1ConstraintError
+        with self.assertRaises(D1ConstraintError):
+            self.query(Response({'success': False, 'result': None, 'errors': [{'message': 'Private records are append-only: SQLITE_CONSTRAINT'}]}, code=400))
+        with self.assertRaises(RuntimeError) as failure:
+            self.query(Response({}, code=403))
+        self.assertNotIsInstance(failure.exception, D1ConstraintError)
     def query(self, response):
         session = Session(response)
         with patch.dict("os.environ", {}, clear=True):
