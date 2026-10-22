@@ -51,6 +51,18 @@ def verify(query, *, live=False):
         raise RuntimeError("Reconciliation owner isolation or quarantine failed")
     if json.loads(records[0]["payload_json"]).get("certified") is not False:
         raise RuntimeError("Reconciliation certification invariant failed")
+    for statement in (
+        "UPDATE edge_financial_evidence_events SET intake_status='REJECTED' WHERE event_id=?",
+        "DELETE FROM edge_financial_evidence_events WHERE event_id=?",
+    ):
+        try:
+            query(statement, (imported[0],))
+        except Exception:
+            pass
+        else:
+            raise RuntimeError("Append-only D1 protection missing")
+    if len([row for row in ledger.events() if row["event_id"] == imported[0]]) != 1:
+        raise RuntimeError("Synthetic reconciliation event was modified")
     return {"status": "PASS", "live": True, "quarantined": True,
             "reconciliation_review_required": True, "reconciliation_idempotency": True,
             "owner_isolation": True, "idempotency": True,
