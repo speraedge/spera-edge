@@ -24,7 +24,7 @@ def audit_filing_documents(register_csv, documents_dir, output_dir):
     documents = Path(documents_dir).resolve()
     with source.open(encoding="utf-8-sig", newline="") as stream:
         reader = csv.DictReader(stream)
-        required = {"symbol", "isin", "period_end", "basis", "source_url",
+        required = {"symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
                     "document_filename", "expected_sha256"}
         if not reader.fieldnames or not required.issubset(reader.fieldnames):
             raise ValueError("Filing register missing required columns")
@@ -34,10 +34,13 @@ def audit_filing_documents(register_csv, documents_dir, output_dir):
     for number, item in enumerate(records, 2):
         name = str(item["document_filename"] or "").strip()
         expected = str(item["expected_sha256"] or "").strip().lower()
-        key = (item["isin"], item["period_end"], item.get("period_type", ""), item["basis"], item["source_url"])
+        key = tuple(str(item.get(field) or "").strip().upper() for field in
+                    ("symbol", "isin", "period_end", "period_type", "basis", "source_url", "published_on"))
         status = "REVIEW_ORIGINAL_DOCUMENT"
         digest = ""
-        if key in seen:
+        if not all(key):
+            status = "INCOMPLETE_FILING_IDENTITY"
+        elif key in seen:
             status = "DUPLICATE_FILING_IDENTITY"
         elif not _trusted_source(item["source_url"]):
             status = "INVALID_OFFICIAL_SOURCE_URL"
