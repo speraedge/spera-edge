@@ -64,16 +64,16 @@ def export_section(title, frame, key):
     if frame is None or frame.empty:
         st.info(f"{title}: no data to export.")
         return
-    st.markdown(f"**{title}**")
-    st.caption(f"{len(frame)} rows. CSV/Excel include all columns; PDF shows the first eight fields.")
     slug = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
-    cols = st.columns(3)
-    for col, fmt, ext, mime in zip(cols, ("CSV", "Excel", "PDF"),
+    with st.expander(f"Download {title} · CSV / Excel / PDF", expanded=False):
+        st.caption(f"{len(frame)} rows. CSV/Excel include all columns; PDF shows the first eight fields.")
+        cols = st.columns(3)
+        for col, fmt, ext, mime in zip(cols, ("CSV", "Excel", "PDF"),
                                    ("csv", "xlsx", "pdf"),
                                    ("text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/pdf")):
-        col.download_button(fmt, export_bytes(frame, fmt, title),
-                            file_name=f"edge_{slug}.{ext}", mime=mime,
-                            key=f"export_{slug}_{ext}")
+            col.download_button(fmt, export_bytes(frame, fmt, title),
+                                file_name=f"edge_{slug}.{ext}", mime=mime,
+                                key=f"export_{slug}_{ext}")
 
 
 def render_export_center(snapshot_table, metadata, snapshot_fresh):
