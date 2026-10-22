@@ -523,6 +523,47 @@ def verify_d1():
     fresh = Ledger(owner, d1_query).events()
     if len(fresh) != 1 or fresh[0]['event_id'] != event_id or Ledger(owner + '_OTHER', d1_query).events():
         raise RuntimeError('D1 persistence or owner-isolation verification failed')
+    # Isolated synthetic setup and fill records verify the same D1 tables used by the UI.
+    d1_query("""CREATE TABLE IF NOT EXISTS edge_setup_decisions (
+        owner_id TEXT NOT NULL, decision_id TEXT NOT NULL,
+        created_utc TEXT NOT NULL, payload TEXT NOT NULL,
+        PRIMARY KEY(owner_id, decision_id))""")
+    d1_query("""CREATE TABLE IF NOT EXISTS edge_decision_trade_links (
+        owner_id TEXT NOT NULL, decision_id TEXT NOT NULL, event_id TEXT NOT NULL,
+        created_utc TEXT NOT NULL, PRIMARY KEY(owner_id, decision_id, event_id),
+        UNIQUE(owner_id, event_id))""")
+    decision_id = str(uuid.uuid4())
+    buy_id = str(uuid.uuid4())
+    synthetic_session = datetime.now(timezone.utc).date().isoformat()
+    payload = validate_decision('TECHNICAL-PROBE', synthetic_session, 'TAKE',
+                                'OTHER', 'Synthetic D1 verification only')
+    d1_query("""INSERT INTO edge_setup_decisions(owner_id,decision_id,created_utc,payload)
+        VALUES(?,?,?,?)""", (owner, decision_id, datetime.now(timezone.utc).isoformat(),
+                              json.dumps(payload)))
+    if d1_query('SELECT decision_id FROM edge_setup_decisions WHERE owner_id=? AND decision_id=?',
+                (owner + '_OTHER', decision_id)):
+        raise RuntimeError('Decision owner isolation failed')
+    buy_ledger = Ledger(owner, d1_query)
+    buy_ledger.append('BUY', 'TECHNICAL-PROBE', quantity=1, price=100, stop=90,
+                      note='Synthetic D1 verification only', event_id=buy_id)
+    decision_rows = [dict(payload, decision_id=decision_id)]
+    validate_trade_link(decision_rows, buy_ledger.events(), decision_id, buy_id)
+    d1_query("""INSERT INTO edge_decision_trade_links(owner_id,decision_id,event_id,created_utc)
+        VALUES(?,?,?,?)""", (owner, decision_id, buy_id, datetime.now(timezone.utc).isoformat()))
+    links = d1_query('SELECT decision_id,event_id FROM edge_decision_trade_links WHERE owner_id=?', (owner,))
+    if not any(item['decision_id'] == decision_id and item['event_id'] == buy_id for item in links):
+        raise RuntimeError('Decision-trade link round-trip failed')
+    if d1_query('SELECT event_id FROM edge_decision_trade_links WHERE owner_id=?',
+                (owner + '_OTHER',)):
+        raise RuntimeError('Link owner isolation failed')
+    duplicate = d1_query("""INSERT INTO edge_decision_trade_links(owner_id,decision_id,event_id,created_utc)
+        VALUES(?,?,?,?) ON CONFLICT DO NOTHING RETURNING event_id""",
+        (owner, decision_id, buy_id, datetime.now(timezone.utc).isoformat()))
+    if duplicate:
+        raise RuntimeError('Duplicate decision-trade link was accepted')
+    audit = audit_decision_links(decision_rows, buy_ledger.events(), links)
+    if audit['Status'].tolist() != ['VALID']:
+        raise RuntimeError('Synthetic link integrity audit failed')
     published = d1_query('SELECT run_id, rows_count FROM edge_snapshot_runs ORDER BY generated_utc DESC LIMIT 1')
     if not published:
         raise RuntimeError('No published EDGE D1 research snapshot')
@@ -530,7 +571,9 @@ def verify_d1():
     if not count or int(count[0]['n']) != int(published[0]['rows_count']):
         raise RuntimeError('Published D1 research row count mismatch')
     print(json.dumps({'ledger_write_read_verified': True, 'owner_isolation_verified': True,
-                      'synthetic_probe_event': event_id, 'research_run': published[0]['run_id'], 'research_rows': count[0]['n']}))
+                      'synthetic_probe_event': event_id, 'decision_link_verified': True,
+                      'decision_owner_isolation_verified': True, 'duplicate_link_rejected': True,
+                      'research_run': published[0]['run_id'], 'research_rows': count[0]['n']}))
 
 
 if __name__ == '__main__':
