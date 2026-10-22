@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from edge_core.snapshot_integrity import validate_snapshot
 from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries
 from edge_financial_review import render_financial_evidence_review
+from edge_exports import render_export_center, numbered
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -52,7 +53,7 @@ if edge_meta:
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
 
-tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal", "Financial Evidence Review"])
+tabs = st.tabs(["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal", "Financial Evidence Review", "Exports"])
 with tabs[0]:
     st.subheader("Market Pulse")
     prices = snapshot_table("close") if edge_meta else None
@@ -272,4 +273,6 @@ with tabs[4]:
                     render_financial_evidence_review(scored, membership, financial_records, period_end.isoformat())
         except (ValueError, KeyError, OSError, pd.errors.ParserError) as exc:
             st.error("Financial evidence review unavailable: " + str(exc))
+with tabs[5]:
+    render_export_center(snapshot_table, edge_meta, snapshot_usable)
 st.caption("SPERA EDGE is not investment advice. No automatic execution, certified signals or return guarantees.")
