@@ -1,0 +1,53 @@
+name: Scheduled EDGE Upstox acquisition (research-only)
+on:
+  workflow_dispatch:
+  schedule:
+    # 13:30 UTC = 19:00 IST, weekdays; holidays remain fail-closed downstream.
+    - cron: '30 13 * * 1-5'
+permissions:
+  contents: read
+concurrency:
+  group: edge-upstox-acquisition
+  cancel-in-progress: false
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Require dedicated Upstox token and explicit instrument mapping
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          EDGE_UPSTOX_MAPPING_JSON: ${{ secrets.EDGE_UPSTOX_MAPPING_JSON }}
+        run: |
+          python - <<'PY'
+          import json, os
+          mapping = json.loads(os.environ.get("EDGE_UPSTOX_MAPPING_JSON") or "{}")
+          if not os.environ.get("UPSTOX_ACCESS_TOKEN") or not isinstance(mapping, dict) or len(mapping) < 495:
+              raise SystemExit("BLOCKED: EDGE Upstox token or >=495-symbol verified mapping not configured")
+          print("Credentials and mapping presence validated; secrets not printed")
+          PY
+      - name: Acquire read-only provider candles
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          EDGE_UPSTOX_MAPPING_JSON: ${{ secrets.EDGE_UPSTOX_MAPPING_JSON }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+          from tools.build_upstox_snapshot import build
+          end = datetime.now(ZoneInfo("Asia/Kolkata")).date()
+          start = end - timedelta(days=420)
+          build(json.loads(os.environ["EDGE_UPSTOX_MAPPING_JSON"]), str(start), str(end), "snapshot", os.environ["UPSTOX_ACCESS_TOKEN"])
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edge-provider-research-candles
+          path: snapshot/
+          retention-days: 7
+          if-no-files-found: error
