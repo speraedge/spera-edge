@@ -61,7 +61,8 @@ def verify(query, *, live=False):
             pass
         else:
             raise RuntimeError("Append-only D1 protection missing")
-    if len([row for row in ledger.events() if row["event_id"] == imported[0]]) != 1:
+    preserved = [row for row in ledger.events() if row["event_id"] == imported[0]]
+    if len(preserved) != 1 or preserved[0]["intake_status"] != "REVIEW_REQUIRED":
         raise RuntimeError("Synthetic reconciliation event was modified")
     return {"status": "PASS", "live": True, "quarantined": True,
             "reconciliation_review_required": True, "reconciliation_idempotency": True,
