@@ -88,6 +88,43 @@ class ShortlistAuditTests(unittest.TestCase):
             self.assertEqual(ledger.events()[0]["intake_status"], "REVIEW_REQUIRED")
             db.close()
 
+    def test_multi_company_mixed_sources_stay_quarantined(self):
+        second = {"symbol": "DEF", "isin": "INE000B01002"}
+        third = {"symbol": "GHI", "isin": "INE000C01003"}
+        fourth = {"symbol": "JKL", "isin": "INE000D01004"}
+        candidates = [C, second, third, fourth]
+        filings = [F, {**F, **second, "source_url": "https://nsearchives.nseindia.com/def.pdf"},
+                   {**F, **third, "source_url": "https://nsearchives.nseindia.com/ghi.pdf"}]
+        records = [{**R, **candidate} for candidate in candidates]
+        class MixedSession:
+            def get(self, url, **kwargs):
+                self_kwargs = kwargs
+                assert self_kwargs["allow_redirects"] is False
+                return Response(403 if url.endswith("/def.pdf") else 200)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_shortlist_financial_audit(
+                candidates, filings, records, "2026-09-30", Path(tmp),
+                transcriptions=[], session=MixedSession())
+            statuses = {x["symbol"]: x["acquisition_status"] for x in result["review"]}
+            self.assertEqual(statuses, {
+                "ABC": "ACQUIRED_UNVERIFIED", "DEF": "HTTP_403",
+                "GHI": "ACQUIRED_UNVERIFIED", "JKL": "SOURCE_NOT_FOUND"})
+            queue = [{k: record[k] for k in (
+                "symbol", "isin", "period_end", "period_type", "basis")}
+                for record in records]
+            checked = validate_acquisition_import(result, queue)
+            self.assertEqual(len(checked), 4)
+            self.assertTrue(all(not x["certified"] for x in result["review"]))
+            self.assertFalse(result["ready_for_trading_signals"])
+            with self.assertRaises(ValueError):
+                validate_acquisition_import({**result, "review": [
+                    *result["review"][:1], {**result["review"][1], "isin": "WRONG"},
+                    *result["review"][2:]]}, queue)
+            with self.assertRaises(ValueError):
+                validate_acquisition_import({**result, "review": [
+                    *result["review"][:1], {**result["review"][1], "certified": True},
+                    *result["review"][2:]]}, queue)
+
     def test_pdf_acquisition_still_uncertified(self):
         result = self.run_case([F], transcriptions=[], code=200)
         self.assertEqual(result["status_counts"], {"ACQUIRED_UNVERIFIED": 1})
