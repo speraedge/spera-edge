@@ -18,6 +18,16 @@ class BreadthBreakoutBridgeTests(unittest.TestCase):
         self.assertEqual(result.loc["MIXED", "Unresolved"], 1)
         self.assertEqual(result.loc["NO_BREADTH", "Successes"], 1)
 
+    def test_low_coverage_is_not_classified_as_broad(self):
+        breadth = pd.DataFrame({"Above_50_Pct": [90], "Above_200_Pct": [95],
+                                "Coverage_200": [20]},
+                               index=pd.to_datetime(["2026-10-12"]))
+        breadth.attrs["universe_size"] = 500
+        events = pd.DataFrame({"Session": ["2026-10-12"], "Outcome": ["SUCCESS"]})
+        result = breadth_breakout_summary(events, breadth).set_index("Breadth_At_Breakout")
+        self.assertEqual(result.loc["NO_BREADTH", "Qualified"], 1)
+        self.assertEqual(result.loc["BROAD", "Qualified"], 0)
+
     def test_missing_breadth_columns_fail_closed(self):
         with self.assertRaises(ValueError):
             breadth_breakout_summary(pd.DataFrame({"Session": [], "Outcome": []}),
