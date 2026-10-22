@@ -5,6 +5,7 @@ import json
 from edge_core.financial_evidence_ledger import FinancialEvidenceLedger
 from edge_core.manual_evidence_queue import build_queue
 from edge_core.evidence_shortlist import evidence_shortlist
+from edge_core.acquisition_review_import import validate_acquisition_import, import_acquisition_review
 
 
 def render_financial_evidence_review(scored, membership, financial_records, expected_period_end):
@@ -79,21 +80,12 @@ def render_financial_evidence_review(scored, membership, financial_records, expe
         if uploaded is not None:
             try:
                 imported = json.loads(uploaded.getvalue().decode("utf-8"))
-                outcomes = imported.get("review", imported.get("decisions", []))
-                if not isinstance(outcomes, list) or len(outcomes) > 1000:
-                    raise ValueError("Invalid review data")
-                keys = {(x["symbol"], x["isin"], x["period_end"],
-                         x["period_type"], x["basis"]) for x in queue}
-                eligible = [x for x in outcomes if isinstance(x, dict) and
-                            tuple(x.get(k) for k in ("symbol", "isin", "period_end",
-                                                      "period_type", "basis")) in keys]
-                st.caption(f"{len(eligible)} matching unverified outcomes")
-                if eligible:
-                    st.dataframe(eligible, use_container_width=True)
-                    if st.button("Append as unverified review events"):
-                        for outcome in eligible:
-                            ledger.append_reconciliation(queue, outcome)
-                        st.success("Saved as REVIEW_REQUIRED; no certification.")
+                eligible = validate_acquisition_import(imported, queue)
+                st.caption(f"{len(eligible)} validated unverified outcomes")
+                st.dataframe(eligible, use_container_width=True)
+                if st.button("Append validated unverified review events"):
+                    events = import_acquisition_review(ledger, queue, imported)
+                    st.success(f"{len(events)} review events recorded or safely replayed; not certified.")
             except (ValueError, KeyError, TypeError, UnicodeError) as exc:
                 st.error("Import rejected: " + str(exc))
         history = ledger.events()
