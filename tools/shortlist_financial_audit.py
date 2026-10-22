@@ -108,9 +108,13 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
                           "source_url", "published_on"))
         evidence = reconciliation.get(identity, {})
         evidence = dict(evidence)
-        if evidence and all(label in evidence for label in
-                            ("document_status", "statement_status", "value_status", "comparability_status")):
+        required_layers = ("document_status", "statement_status", "value_status", "comparability_status")
+        if (all(identity) and all(label in evidence for label in required_layers)
+                and not any(evidence[label] == "AMBIGUOUS_RECONCILIATION_IDENTITY"
+                            for label in required_layers)):
             evidence["identity_status"] = "FULL_IDENTITY_VERIFIED"
+        elif evidence:
+            evidence["identity_status"] = "PARTIAL_OR_AMBIGUOUS_IDENTITY"
         item["reconciliation"] = evidence
         item["financial_values_verified"] = False
         item["ready_for_trading_signals"] = False
