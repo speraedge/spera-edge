@@ -91,8 +91,9 @@ with tabs[0]:
                        f'Stop breaches: {health["stop_breaches"]} | Unresolved: {health["unresolved"]}. Current-universe survivorship bias applies.')
             st.dataframe(numbered(health["events"].tail(100)), use_container_width=True)
             export_section("Breakout outcomes", health["events"], "edge_breakout_outcomes")
-            breadth_groups = breadth_breakout_summary(
-                health["events"], market_report(prices)["history"])
+            breadth_history = market_report(prices)["history"]
+            breadth_history.attrs["universe_size"] = len(prices.columns)
+            breadth_groups = breadth_breakout_summary(health["events"], breadth_history)
             st.subheader("Breakout outcomes by market breadth")
             st.caption("Same-session breadth; current-universe survivorship bias. "
                        "No breadth evidence is kept separate. Research-only.")
