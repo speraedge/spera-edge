@@ -70,9 +70,12 @@ def main():
         result["statement_document_reconciliation"] = reconcile_statement_documents(
             args.financials, out / "filing_documents" / "filing_document_review.csv",
             out / "statement_documents")
+    if args.filing_transcriptions and not args.filing_register:
+        parser.error("Filing transcriptions require a reviewed filing register and documents")
     if args.filing_transcriptions:
         result["filing_value_reconciliation"] = reconcile_filing_values(
-            args.financials, args.filing_transcriptions, out / "filing_values")
+            args.financials, args.filing_transcriptions, out / "filing_values",
+            out / "filing_documents" / "filing_document_review.csv")
     if args.coverage_register:
         result["historical_coverage"] = audit_coverage(args.coverage_register, args.coverage_start,
                                                        args.coverage_end, out / "coverage")
