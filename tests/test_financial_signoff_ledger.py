@@ -21,7 +21,7 @@ class SignoffLedgerTests(unittest.TestCase):
                        "basis": "CONSOLIDATED"}]
         self.candidate = {**self.queue[0], "published_on": "2026-10-20",
                           "acquisition_status": "ACQUIRED_UNVERIFIED",
-                          "reconciliation": dict(REQUIRED),
+                          "reconciliation": {**REQUIRED, "identity_status": "FULL_IDENTITY_VERIFIED"},
                           "source_url": "https://nsearchives.nseindia.com/abc.pdf",
                           "document_sha256": "a" * 64}
 
