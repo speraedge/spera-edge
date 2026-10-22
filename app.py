@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
 from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
+from edge_core.breadth_breakout_bridge import breadth_breakout_summary
 from edge_core.historical_leadership_bridge import historical_leadership_context, leadership_breakout_summary
 from edge_core.momentum_v1 import apply_frozen_v1_scores
 from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
@@ -18,7 +19,7 @@ import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from edge_core.snapshot_integrity import validate_snapshot
-from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries
+from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report
 from edge_financial_review import render_financial_evidence_review
 from edge_exports import export_section, numbered
 from edge_trader_readiness_ui import render_trader_readiness
@@ -90,6 +91,13 @@ with tabs[0]:
                        f'Stop breaches: {health["stop_breaches"]} | Unresolved: {health["unresolved"]}. Current-universe survivorship bias applies.')
             st.dataframe(numbered(health["events"].tail(100)), use_container_width=True)
             export_section("Breakout outcomes", health["events"], "edge_breakout_outcomes")
+            breadth_groups = breadth_breakout_summary(
+                health["events"], market_report(prices)["history"])
+            st.subheader("Breakout outcomes by market breadth")
+            st.caption("Same-session breadth; current-universe survivorship bias. "
+                       "No breadth evidence is kept separate. Research-only.")
+            st.dataframe(numbered(breadth_groups), use_container_width=True)
+            export_section("Breadth breakout outcomes", breadth_groups, "edge_breadth_breakout_outcomes")
             history_root = Path(__file__).parent / "data" / "history"
             if (history_root / "manifest.json").is_file() and not health["events"].empty:
                 try:
