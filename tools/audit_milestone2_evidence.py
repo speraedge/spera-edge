@@ -10,6 +10,7 @@ from edge_core.corporate_action_evidence import review_events
 from edge_core.financial_evidence import review_financials
 from edge_core.financial_comparability import review_comparability
 from edge_core.financial_growth_reconciliation import reconcile_financial_growth
+from edge_core.filing_document_provenance import audit_filing_documents
 from edge_core.historical_evidence_coverage import audit_coverage
 from edge_core.action_coverage_reconciliation import reconcile_action_coverage
 
@@ -19,6 +20,8 @@ def main():
                         help="Official NSE membership CSV containing Symbol and ISIN Code")
     parser.add_argument("--corporate-actions", help="Corporate-action evidence CSV")
     parser.add_argument("--financials", help="Financial statement evidence CSV")
+    parser.add_argument("--filing-register", help="CSV listing original financial filing documents")
+    parser.add_argument("--filing-documents", help="Directory containing locally downloaded filing documents")
     parser.add_argument("--coverage-register", help="Reviewed monthly historical source register CSV")
     parser.add_argument("--coverage-start", help="Inclusive YYYY-MM-DD")
     parser.add_argument("--coverage-end", help="Inclusive YYYY-MM-DD")
@@ -28,8 +31,10 @@ def main():
         parser.error("Coverage start and end must both be supplied")
     if args.coverage_register and not args.coverage_start:
         parser.error("Coverage register requires start and end")
-    if not args.corporate_actions and not args.financials and not args.coverage_register:
+    if not args.corporate_actions and not args.financials and not args.coverage_register and not args.filing_register:
         parser.error("Supply at least one evidence CSV")
+    if bool(args.filing_register) != bool(args.filing_documents):
+        parser.error("Filing register and document directory must both be supplied")
     membership = pd.read_csv(args.membership, dtype=str).fillna("")
     if not {"Symbol", "ISIN Code"}.issubset(membership.columns):
         parser.error("Membership needs Symbol and ISIN Code")
@@ -52,6 +57,9 @@ def main():
             out / "financials" / "financial_evidence_review.csv",
             out / "comparability" / "financial_comparability.csv",
             out / "growth_reconciliation")
+    if args.filing_register:
+        result["filing_documents"] = audit_filing_documents(
+            args.filing_register, args.filing_documents, out / "filing_documents")
     if args.coverage_register:
         result["historical_coverage"] = audit_coverage(args.coverage_register, args.coverage_start,
                                                        args.coverage_end, out / "coverage")
