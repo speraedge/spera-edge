@@ -6,6 +6,7 @@ import math
 import uuid
 import numpy as np
 import pandas as pd
+from edge_exports import numbered, export_section
 from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
 
@@ -288,7 +289,8 @@ def render_industries(directory, close):
     try:
         evidence, _, industries, _ = load_current_evidence(directory, close)
         st.caption(f"Official NSE membership fetched {evidence['fetched_utc']}; price session {close.index[-1].date()}. Equal-member research, not sector-index returns. Unknown classifications are not certified.")
-        st.dataframe(industries, use_container_width=True)
+        st.dataframe(numbered(industries), use_container_width=True)
+        export_section('Industry research', industries, 'industry_research')
         st.download_button('Download current industry research', industries.to_csv(index=False), 'edge_current_industries.csv', 'text/csv')
     except (OSError, ValueError, KeyError, TypeError):
         st.info('Current authoritative industry evidence unavailable. Archived sector rankings remain historical only.')
