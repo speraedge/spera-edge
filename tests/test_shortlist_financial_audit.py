@@ -70,6 +70,11 @@ class ShortlistAuditTests(unittest.TestCase):
             expected = hashlib.sha256(b"%PDF-1.4\\nsynthetic fixture\\n").hexdigest()
             self.assertEqual(result["review"][0]["document_sha256"], expected)
             self.assertEqual(result["review"][0]["source_url"], F["source_url"])
+            self.assertEqual(result["review"][0]["reconciliation_status"], "REVIEW_REQUIRED")
+            self.assertFalse(result["review"][0]["financial_values_verified"])
+            self.assertFalse(result["review"][0]["ready_for_trading_signals"])
+            self.assertIn("document_status", result["review"][0]["reconciliation"])
+            self.assertIn("value_status", result["review"][0]["reconciliation"])
             queue = [{key: R[key] for key in (
                 "symbol", "isin", "period_end", "period_type", "basis")}]
             self.assertEqual(validate_acquisition_import(result, queue)[0]["document_sha256"], expected)
