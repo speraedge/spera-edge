@@ -7,9 +7,11 @@ import json
 from pathlib import Path
 import pandas as pd
 from edge_core.d1_store import d1_query
+from edge_core.snapshot_integrity import validate_snapshot
 
 def publish(path="data/latest", query=d1_query):
     root=Path(path)
+    validate_snapshot(root)
     raw=(root/"leadership.csv").read_bytes()
     meta=json.loads((root/"metadata.json").read_text())
     if (meta.get("universe")!="NIFTY_500" or not (495<=int(meta.get("expected",0))<=505)
