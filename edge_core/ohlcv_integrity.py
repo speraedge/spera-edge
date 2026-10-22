@@ -7,6 +7,20 @@ VERIFIED_SPECIAL_SESSIONS = {
 }
 
 
+def snapshot_is_fresh(last_session, now):
+    """Conservative weekday completion check; unverified holidays fail closed."""
+    current = pd.Timestamp(now)
+    if current.tzinfo is None or pd.isna(current):
+        raise ValueError('Timezone-aware current time required')
+    current = current.tz_convert('Asia/Kolkata')
+    expected = current.normalize().tz_localize(None)
+    if current.hour < 16:
+        expected -= pd.Timedelta(days=1)
+    while expected.dayofweek >= 5 and str(expected.date()) not in VERIFIED_SPECIAL_SESSIONS:
+        expected -= pd.Timedelta(days=1)
+    return pd.Timestamp(last_session).date() == expected.date()
+
+
 def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
     """Fail closed on invalid observed candles and mismatched time series.
 
