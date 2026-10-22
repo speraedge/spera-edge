@@ -51,17 +51,12 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir, docu
             digest = str(item["document_sha256"]).strip().lower()
             if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
                 status = "INVALID_DOCUMENT_DIGEST"
-            elif document_review_csv is not None and not documents.get(
-                tuple(str(financial.get(field) or "").strip().upper()
-                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))):
+            elif document_review_csv is not None and not documents.get(key(financial)):
                 status = "MISSING_REVIEWED_DOCUMENT"
             elif document_review_csv is not None and (
-                len(documents[tuple(str(financial.get(field) or "").strip().upper()
-                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))]) != 1
-                or documents[tuple(str(financial.get(field) or "").strip().upper()
-                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))][0]["status"] != "REVIEW_ORIGINAL_DOCUMENT"
-                or documents[tuple(str(financial.get(field) or "").strip().upper()
-                      for field in ("symbol", "isin", "period_end", "basis", "source_url"))][0]["computed_sha256"].lower() != digest):
+                len(documents[key(financial)]) != 1
+                or documents[key(financial)][0]["status"] != "REVIEW_ORIGINAL_DOCUMENT"
+                or documents[key(financial)][0]["computed_sha256"].lower() != digest):
                 status = "DOCUMENT_PROVENANCE_MISMATCH"
             else:
                 try:
