@@ -27,7 +27,7 @@ def run_bundle(source_register, financials, transcriptions, output, *, session=N
     if len(rows) != len(acquired["documents"]):
         raise ValueError("Acquisition manifest row count mismatch")
     provenance = out / "document_register.csv"
-    fields = ["symbol", "isin", "period_end", "basis", "source_url",
+    fields = ["symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
               "document_filename", "expected_sha256"]
     with provenance.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fields)
@@ -35,7 +35,10 @@ def run_bundle(source_register, financials, transcriptions, output, *, session=N
         for source, result in zip(rows, acquired["documents"]):
             writer.writerow({
                 "symbol": source["symbol"], "isin": source["isin"],
-                "period_end": source["period_end"], "basis": source.get("basis", ""),
+                "period_end": source["period_end"],
+                "period_type": source.get("period_type", ""),
+                "basis": source.get("basis", ""),
+                "published_on": source.get("published_on", ""),
                 "source_url": source["source_url"],
                 "document_filename": result["file"],
                 "expected_sha256": result["sha256"],
