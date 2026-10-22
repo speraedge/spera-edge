@@ -22,7 +22,10 @@ class LiveD1ProbeTests(unittest.TestCase):
         self.assertFalse(result["certified"])
         self.assertEqual(db.execute(
             "SELECT COUNT(*) FROM edge_financial_evidence_events"
-        ).fetchone()[0], 1)
+        ).fetchone()[0], 2)
+        self.assertEqual(dict(db.execute(
+            "SELECT event_kind, COUNT(*) FROM edge_financial_evidence_events GROUP BY event_kind"
+        ).fetchall()), {"INTAKE": 1, "SOURCE_RECONCILIATION": 1})
 
 
 if __name__ == "__main__":
