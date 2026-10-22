@@ -9,6 +9,7 @@ import pandas as pd
 from edge_core.corporate_action_evidence import review_events
 from edge_core.financial_evidence import review_financials
 from edge_core.historical_evidence_coverage import audit_coverage
+from edge_core.action_coverage_reconciliation import reconcile_action_coverage
 
 def main():
     parser = argparse.ArgumentParser()
@@ -47,6 +48,11 @@ def main():
     if args.coverage_register:
         result["historical_coverage"] = audit_coverage(args.coverage_register, args.coverage_start,
                                                        args.coverage_end, out / "coverage")
+    if args.corporate_actions and args.coverage_register:
+        result["action_coverage_reconciliation"] = reconcile_action_coverage(
+            out / "actions" / "corporate_action_review.csv",
+            out / "coverage" / "historical_coverage.csv",
+            out / "reconciliation")
     out.mkdir(parents=True, exist_ok=True)
     (out / "evidence_manifest.json").write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
