@@ -97,13 +97,13 @@ def export_section(title, frame, key):
     slug = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
     with st.expander(f"Download {title} · CSV / Excel / PDF", expanded=False):
         st.caption(f"{len(frame)} rows. CSV/Excel include all columns; PDF includes all fields in column groups.")
-        cols = st.columns(3)
-        for col, fmt, ext, mime in zip(cols, ("CSV", "Excel", "PDF"),
-                                   ("csv", "xlsx", "pdf"),
-                                   ("text/csv", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/pdf")):
-            col.download_button(fmt, export_bytes(frame, fmt, title),
-                                file_name=f"edge_{slug}.{ext}", mime=mime,
-                                key=f"export_{slug}_{ext}")
+        fmt = st.selectbox('Export format', ('CSV', 'Excel', 'PDF'), key=f'export_format_{slug}')
+        ext, mime = {'CSV': ('csv', 'text/csv'),
+                     'Excel': ('xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+                     'PDF': ('pdf', 'application/pdf')}[fmt]
+        st.download_button(fmt, export_bytes(frame, fmt, title),
+                           file_name=f"edge_{slug}.{ext}", mime=mime,
+                           key=f"export_{slug}_{ext}")
 
 
 def render_export_center(snapshot_table, metadata, snapshot_fresh):
