@@ -14,6 +14,13 @@ def numbered(frame):
 
 def export_bytes(frame, fmt, title):
     clean = numbered(frame)
+    if fmt in ('CSV', 'Excel'):
+        def spreadsheet_safe(value):
+            if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@')):
+                return "'" + value
+            return value
+        clean = clean.map(spreadsheet_safe)
+        clean.columns = [spreadsheet_safe(str(column)) for column in clean.columns]
     if fmt == "CSV":
         return clean.to_csv(index=True).encode("utf-8-sig")
     if fmt == "Excel":
@@ -36,7 +43,7 @@ def export_bytes(frame, fmt, title):
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import landscape, A4
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, PageBreak
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from xml.sax.saxutils import escape
 
         def printable(value):
@@ -47,12 +54,13 @@ def export_bytes(frame, fmt, title):
                     return ""
             except (TypeError, ValueError):
                 pass
-            return str(value).replace("\\n", " ")[:70]
+            return str(value)
 
         out = BytesIO()
         doc = SimpleDocTemplate(out, pagesize=landscape(A4), leftMargin=24,
                                 rightMargin=24, topMargin=30, bottomMargin=30)
         styles = getSampleStyleSheet()
+        cell_style = ParagraphStyle('ExportCell', parent=styles['Normal'], fontSize=6, leading=8, splitLongWords=True)
         story = [Paragraph(escape(str(title)), styles["Heading2"]),
                  Paragraph("Research export. Columns are split into labeled groups; all rows and fields are included.", styles["Normal"])]
         fields = [str(c) for c in clean.columns]
@@ -63,7 +71,8 @@ def export_bytes(frame, fmt, title):
             for row_no, row in enumerate(clean.itertuples(index=False, name=None), 1):
                 values.append([str(row_no)] + [printable(row[i]) for i in selected])
             widths = [34] + [(landscape(A4)[0] - 82) / len(selected)] * len(selected)
-            table = Table(values, colWidths=widths, repeatRows=1, hAlign="LEFT")
+            values = [[Paragraph(escape(str(value)).replace('\n', '<br/>'), cell_style) for value in row] for row in values]
+            table = Table(values, colWidths=widths, repeatRows=1, hAlign="LEFT", splitInRow=1)
             table.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F497D")),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
