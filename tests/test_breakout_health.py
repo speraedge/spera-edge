@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import pandas as pd
-from edge_core.breakout_health import breakout_health
+from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
 
 
 class BreakoutHealthTests(unittest.TestCase):
@@ -36,6 +36,25 @@ class BreakoutHealthTests(unittest.TestCase):
         self.assertEqual(result["resolved"], 0)
         self.assertEqual(result["unresolved"], 1)
         self.assertIsNone(result["success_rate_pct"])
+
+    def test_stop_breach_precedes_positive_forward_close(self):
+        c, h, v = self.fixtures()
+        low = c.copy()
+        low.iloc[:, 0] = 99.0
+        low.iloc[70, 0] = 95.0
+        result = breakout_health(c, h, v, low=low, lookback=30)
+        self.assertEqual(result["stop_breaches"], 1)
+        self.assertEqual(result["successes"], 0)
+        self.assertEqual(result["events"].iloc[0]["First_Stop_Session"],
+                         str(c.index[70].date()))
+
+    def test_multiple_horizons(self):
+        c, h, v = self.fixtures()
+        low = c.copy()
+        low.iloc[:, 0] = 99.0
+        result = breakout_horizon_comparison(c, h, v, low=low, horizons=(5, 10, 20), lookback=30)
+        self.assertEqual(result["Horizon_Sessions"].tolist(), [5, 10, 20])
+        self.assertEqual(len(result), 3)
 
     def test_misaligned_inputs_rejected(self):
         c, h, v = self.fixtures()
