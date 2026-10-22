@@ -31,6 +31,16 @@ class OhlcvIntegrityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.check()
 
+    def test_infinite_price_rejected(self):
+        self.close.iloc[0, 0] = float("inf")
+        with self.assertRaisesRegex(ValueError, "Non-finite"):
+            self.check()
+
+    def test_infinite_volume_rejected(self):
+        self.volume.iloc[0, 0] = float("inf")
+        with self.assertRaisesRegex(ValueError, "Non-finite"):
+            self.check()
+
     def test_partial_candle(self):
         self.high.iloc[0, 0] = float("nan")
         with self.assertRaises(ValueError):
