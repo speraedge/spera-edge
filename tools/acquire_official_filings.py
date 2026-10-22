@@ -41,6 +41,9 @@ def acquire(register_csv, output_dir, session=None):
     for number, item in enumerate(rows, 2):
         result = {"row": number, "symbol": item["symbol"], "isin": item["isin"],
                   "period_end": item["period_end"], "source_url": item["source_url"],
+                  "period_type": item.get("period_type", ""),
+                  "basis": item.get("basis", ""),
+                  "published_on": item.get("published_on", ""),
                   "file": "", "sha256": "", "bytes": 0, "status": "NOT_ACQUIRED",
                   "certified": False}
         try:
