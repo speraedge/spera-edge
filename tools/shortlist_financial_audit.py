@@ -40,6 +40,13 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
             writer.writerows([{k: row.get(k, "") for k in (*required, "document_sha256")}
                               for row in transcriptions])
         audit = run_bundle(register, financials, transcribed, out / "audit", session=session)
+    with register.open(newline="", encoding="utf-8") as stream:
+        registered = list(csv.DictReader(stream))
+    publication_by_key = {
+        (row["symbol"].strip().upper(), row["isin"].strip().upper(),
+         row["period_end"], row["period_type"], row["basis"]): row["published_on"]
+        for row in registered
+    }
     outcomes = []
     acquired = {}
     if audit is not None:
@@ -59,11 +66,15 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
     for decision in bridge["review"]:
         key = (decision["symbol"], decision["isin"], decision["period_end"])
         evidence = acquired.get(key, {})
+        full_key = (decision["symbol"], decision["isin"], decision["period_end"],
+                    decision["period_type"], decision["basis"])
+        published_on = publication_by_key.get(full_key, "")
         outcomes.append({**decision,
                          "acquisition_status": evidence.get(
                              "acquisition_status", decision["acquisition_status"]),
                          "source_url": evidence.get("source_url", ""),
                          "document_sha256": evidence.get("document_sha256", ""),
+                         "published_on": published_on,
                          "status": "REVIEW_REQUIRED", "certified": False})
     result = {"candidate_count": len(outcomes), "registered": bridge["registered"],
               "status_counts": dict(Counter(x["acquisition_status"] for x in outcomes)),
