@@ -43,10 +43,12 @@ class FilingDocumentTests(unittest.TestCase):
                 + digest + "\n")
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["INVALID_PDF_DOCUMENT"], 1)
-            register.write_text(
-                "symbol,isin,period_end,basis,source_url,document_filename,expected_sha256\\n"
-                "ABC,INE000A01001,2026-03-31,CONSOLIDATED,https://example.org/report.pdf,report.pdf,"
-                + digest + "\\n")
+            with register.open("w", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["symbol", "isin", "period_end", "basis", "source_url",
+                                 "document_filename", "expected_sha256"])
+                writer.writerow(["ABC", "INE000A01001", "2026-03-31", "CONSOLIDATED",
+                                 "https://example.org/report.pdf", "report.pdf", digest])
             summary = audit_filing_documents(register, root, root / "out")
             self.assertEqual(summary["status_counts"]["INVALID_OFFICIAL_SOURCE_URL"], 1)
 
