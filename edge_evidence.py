@@ -15,7 +15,7 @@ def publish(directory='data/latest'):
     root = Path(directory)
     root.mkdir(parents=True, exist_ok=True)
     universe, industry = fetch_official_universe(NIFTY_500, attempts_per_url=1)
-    members = universe[['Symbol', industry]].rename(columns={industry: 'Industry'})
+    if 'ISIN Code' not in universe.columns:\n        raise ValueError('Official membership missing ISIN Code; evidence publication blocked')\n    members = universe[['Symbol', 'ISIN Code', industry]].rename(columns={industry: 'Industry'})\n    members['ISIN Code'] = members['ISIN Code'].fillna('').astype(str).str.strip().str.upper()\n    if (members['ISIN Code'].eq('').any() or members['ISIN Code'].duplicated().any()):\n        raise ValueError('Official membership contains missing or duplicate ISIN identities')
     members.to_csv(root / 'current_membership.csv', index=False)
     now = datetime.now(timezone.utc)
     evidence = {'fetched_utc': now.isoformat(), 'membership_source': universe.attrs['universe_source_url'],
