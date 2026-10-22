@@ -64,19 +64,19 @@ with tabs[0]:
         render_market(prices)
         st.subheader("Breakout health (research-only)")
         st.caption("Prior 20-session high breakout on >=1.5x prior 50-session volume; "
-                   "10-session forward close above breakout close = success. "
+                   "10-session forward close above breakout close without a stop breach = success. "
                    "Unresolved events are excluded. Heuristic, not SEPA certification.")
         breakout_high = snapshot_table("high")
         breakout_volume = snapshot_table("volume")
         if breakout_high is not None and breakout_volume is not None:
-            health = breakout_health(prices, breakout_high, breakout_volume)
+            health = breakout_health(prices, breakout_high, breakout_volume, low=snapshot_table('low'))
             m1, m2, m3 = st.columns(3)
             m1.metric("Qualified breakouts", health["qualified"])
             m2.metric("Resolved outcomes", health["resolved"])
             m3.metric("10-session success rate",
                       f'{health["success_rate_pct"]}%' if health["success_rate_pct"] is not None else "Insufficient outcomes")
             st.caption(f'Successes: {health["successes"]} | Failures: {health["failures"]} | '
-                       f'Unresolved: {health["unresolved"]}. Current-universe survivorship bias applies.')
+                       f'Stop breaches: {health["stop_breaches"]} | Unresolved: {health["unresolved"]}. Current-universe survivorship bias applies.')
             st.dataframe(numbered(health["events"].tail(100)), use_container_width=True)
             export_section("Breakout outcomes", health["events"], "edge_breakout_outcomes")
         else:
