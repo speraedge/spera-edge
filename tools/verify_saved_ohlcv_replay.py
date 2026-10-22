@@ -8,7 +8,7 @@ import pandas as pd
 from edge_core.historical_replay import replay_breakout_rules
 
 
-def run(root=Path("data/latest")):
+def run(root=Path("data/latest"), output_dir=None):
     root = Path(root)
     meta = json.loads((root / "metadata.json").read_text())
     if meta.get("source", "").find("Upstox") < 0 or meta.get("universe") != "NIFTY_500":
@@ -38,9 +38,24 @@ def run(root=Path("data/latest")):
                "stop_breaches": int(counts.get("STOP_BREACH", 0)),
                "unresolved": int(counts.get("UNRESOLVED", 0)),
                "quality": meta["quality"], "certified": False}
+    if output_dir is not None:
+        destination = Path(output_dir)
+        destination.mkdir(parents=True, exist_ok=True)
+        result.sort_values(["Session", "Symbol"]).to_csv(destination / "breakout_events.csv", index=False)
+        (destination / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\\n")
+        (destination / "provenance.json").write_text(json.dumps({
+            "snapshot_session": meta["last_session"],
+            "snapshot_generated_utc": meta.get("generated_utc"),
+            "source": meta["source"],
+            "research_only": True,
+            "lookback_signal_sessions": 60,
+            "outcome_horizon_sessions": 10,
+            "volume_multiple": 1.5,
+            "certified": False,
+        }, indent=2, sort_keys=True) + "\\n")
     print(json.dumps(summary, sort_keys=True))
     return summary
 
 
 if __name__ == "__main__":
-    run()
+    run(output_dir=Path("artifacts/replay"))
