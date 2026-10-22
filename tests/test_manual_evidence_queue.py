@@ -38,6 +38,13 @@ class ManualEvidenceQueueTests(unittest.TestCase):
         result = build_queue(self.shortlist * 2, [], "2026-09-30")
         self.assertEqual(len(result), 1)
 
+    def test_null_and_nonfinite_values_are_missing(self):
+        for value in (None, float("nan"), float("inf"), "-inf", "null", False):
+            with self.subTest(value=str(value)):
+                result = build_queue(self.shortlist, [dict(self.base, pat=value)], "2026-09-30")
+                self.assertEqual(result[0]["reason"], "MISSING_FIELDS")
+                self.assertEqual(result[0]["missing_fields"], "pat")
+
     def test_bad_basis_rejected(self):
         with self.assertRaises(ValueError):
             build_queue(self.shortlist, [], "2026-09-30", basis="UNKNOWN")
