@@ -47,11 +47,23 @@ def run_shortlist_financial_audit(shortlist, filing_references, financial_record
         for document in manifest["documents"]:
             key = (document["symbol"].strip().upper(), document["isin"].strip().upper(),
                    document["period_end"])
-            acquired[key] = document["status"]
+            raw_status = document["status"]
+            status = raw_status if raw_status in (
+                "ACQUIRED_UNVERIFIED", "HTTP_403", "HTTP_429", "HTTP_ERROR"
+            ) else "REVIEW_REQUIRED"
+            acquired[key] = {
+                "acquisition_status": status,
+                "source_url": document.get("source_url", ""),
+                "document_sha256": document.get("sha256", ""),
+            }
     for decision in bridge["review"]:
         key = (decision["symbol"], decision["isin"], decision["period_end"])
-        status = acquired.get(key, decision["acquisition_status"])
-        outcomes.append({**decision, "acquisition_status": status,
+        evidence = acquired.get(key, {})
+        outcomes.append({**decision,
+                         "acquisition_status": evidence.get(
+                             "acquisition_status", decision["acquisition_status"]),
+                         "source_url": evidence.get("source_url", ""),
+                         "document_sha256": evidence.get("document_sha256", ""),
                          "status": "REVIEW_REQUIRED", "certified": False})
     result = {"candidate_count": len(outcomes), "registered": bridge["registered"],
               "status_counts": dict(Counter(x["acquisition_status"] for x in outcomes)),
