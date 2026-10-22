@@ -35,6 +35,18 @@ class PublishedEvidenceTests(unittest.TestCase):
         self.assertEqual(self.evidence["membership_source"],
                          "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv")
 
+    def test_placeholder_is_explicitly_classified_when_metadata_available(self):
+        placeholders = self.meta.get("official_placeholders")
+        if placeholders is None:
+            self.skipTest("Published snapshot predates placeholder classification")
+        self.assertEqual(placeholders, [
+            {"Symbol": "DUMMYHEG", "ISIN": "DUM545A01024"}
+        ])
+        unresolved = self.meta.get("unresolved_identities", [])
+        self.assertFalse(any(row.get("Symbol") == "DUMMYHEG" for row in unresolved))
+        self.assertEqual(int(self.meta["expected"]) - int(self.meta["mapped"]),
+                         len(placeholders) + len(unresolved))
+
     def test_benchmark_identity_digest_and_completed_sessions(self):
         if self.evidence["benchmark_status"] == "UNAVAILABLE":
             self.assertFalse(self.meta["certified"])
