@@ -19,6 +19,7 @@ from edge_core.snapshot_integrity import validate_snapshot
 from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries
 from edge_financial_review import render_financial_evidence_review
 from edge_exports import export_section, numbered
+from edge_trader_readiness_ui import render_trader_readiness
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
@@ -248,6 +249,18 @@ with tabs[2]:
                 candidates=compute_setup_scanner(close,volume,high_df=high,low_df=low)
                 st.dataframe(numbered(candidates), use_container_width=True)
                 export_section("VCP research candidates", candidates, "vcp_candidates")
+                membership_file = SNAPSHOT_DIR / "current_membership.csv"
+                provenance_file = SNAPSHOT_DIR / "evidence.json"
+                leadership_frame = snapshot_table("leadership")
+                if membership_file.is_file() and provenance_file.is_file() and leadership_frame is not None:
+                    provenance = json.loads(provenance_file.read_text())
+                    if provenance.get("membership_sha256") == hashlib.sha256(membership_file.read_bytes()).hexdigest() and provenance.get("membership_source"):
+                        members = pd.read_csv(membership_file, dtype={"ISIN Code": str})
+                        period = st.date_input("Financial evidence period end", key="trade_readiness_period")
+                        render_trader_readiness(leadership_frame, members, candidates, period.isoformat(), snapshot_fresh=snapshot_usable)
+                    else:
+                        st.warning("Trading readiness requires verified membership provenance.")
+
                 st.download_button("Download VCP research candidates",candidates.to_csv(index=False),"edge_vcp_candidates.csv","text/csv")
             except (ValueError, KeyError) as exc:
                 st.error(str(exc))
