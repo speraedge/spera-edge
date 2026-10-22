@@ -1,0 +1,60 @@
+"""Offline regression checks for published EDGE market evidence.
+
+No network, API credentials, or private portfolio access required.
+"""
+import csv
+import hashlib
+import json
+from pathlib import Path
+import unittest
+from datetime import date
+
+
+ROOT = Path(__file__).resolve().parents[1] / "data" / "latest"
+
+
+class PublishedEvidenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.meta = json.loads((ROOT / "metadata.json").read_text())
+        cls.evidence = json.loads((ROOT / "evidence.json").read_text())
+
+    def test_official_membership_matches_published_digest(self):
+        path = ROOT / "current_membership.csv"
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                         self.evidence["membership_sha256"])
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertEqual(len(rows), int(self.evidence["membership_rows"]))
+        self.assertEqual(len(rows), int(self.meta["expected"]))
+        symbols = [row["Symbol"].strip() for row in rows]
+        self.assertEqual(len(symbols), len(set(symbols)))
+        self.assertTrue(all(symbols))
+        self.assertTrue(all(row["Industry"].strip() for row in rows))
+        self.assertLessEqual(int(self.meta["mapped"]), len(rows))
+        self.assertEqual(self.evidence["membership_source"],
+                         "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv")
+
+    def test_benchmark_identity_digest_and_completed_sessions(self):
+        self.assertEqual(self.evidence["benchmark_status"], "PROVIDER_HISTORY")
+        self.assertEqual(self.evidence["benchmark_name"], "NIFTY 500")
+        self.assertTrue(self.evidence["benchmark_instrument"].startswith("NSE_INDEX|"))
+        path = ROOT / "benchmark.csv"
+        self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
+                         self.evidence["benchmark_sha256"])
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            rows = list(csv.DictReader(handle))
+        self.assertGreaterEqual(len(rows), 253)
+        dates = [date.fromisoformat(row["Date"][:10]) for row in rows]
+        self.assertEqual(dates, sorted(set(dates)))
+        self.assertLessEqual(dates[-1], date.fromisoformat(self.meta["last_session"]))
+        self.assertTrue(all(float(row["close"]) > 0 for row in rows))
+
+    def test_unverified_research_cannot_be_promoted(self):
+        self.assertIs(self.meta["certified"], False)
+        self.assertEqual(self.meta["quality"], "REVIEW_UNVERIFIED_CORPORATE_ACTIONS")
+        self.assertEqual(int(self.meta["research_pass"]), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
