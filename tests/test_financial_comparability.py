@@ -33,6 +33,33 @@ class ComparabilityTests(unittest.TestCase):
             self.assertEqual(rows[1]["revenue_growth_candidate_pct"], "20.0")
             self.assertEqual(rows[1]["certified"], "False")
 
+    def test_future_and_reversed_publication_dates_fail_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "financial.csv"
+            fields = ["symbol", "isin", "period_end", "period_type", "basis",
+                      "revenue", "pat", "source_url", "published_on"]
+            for prior_published, current_published in (
+                ("2025-03-31", "2099-01-01"),
+                ("2026-04-15", "2026-04-01"),
+            ):
+                with self.subTest(prior=prior_published, current=current_published):
+                    with source.open("w", newline="") as stream:
+                        writer = csv.DictWriter(stream, fieldnames=fields)
+                        writer.writeheader()
+                        for period, published, revenue in (
+                            ("2025-03-31", prior_published, "100"),
+                            ("2026-03-31", current_published, "120"),
+                        ):
+                            writer.writerow(dict(symbol="ABC", isin="INE000A01001",
+                                period_end=period, period_type="FY",
+                                basis="CONSOLIDATED", revenue=revenue, pat="10",
+                                source_url="https://example.org/report",
+                                published_on=published))
+                    result = review_comparability(source, root / "out")
+                    self.assertEqual(result["status_counts"].get("CANDIDATE_COMPARABLE_UNVERIFIED", 0), 0)
+                    self.assertEqual(result["status_counts"]["INVALID_PUBLICATION_DATE"], 1)
+
     def test_quarterly_previous_quarter_boundary(self):
         from edge_core.financial_comparability import _prior_period
         self.assertEqual(_prior_period("2026-03-31", "Q"), "2025-12-31")
