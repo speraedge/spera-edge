@@ -25,13 +25,13 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir, docu
     if document_review_csv is not None:
         with Path(document_review_csv).open(encoding="utf-8-sig", newline="") as stream:
             reader = csv.DictReader(stream)
-            required_docs = {"symbol", "isin", "period_end", "basis", "source_url",
+            required_docs = {"symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url",
                              "computed_sha256", "status"}
             if not reader.fieldnames or not required_docs.issubset(reader.fieldnames):
                 raise ValueError("Filing document review missing required columns")
             for document in reader:
                 document_key = tuple(str(document.get(field) or "").strip().upper()
-                                     for field in ("symbol", "isin", "period_end", "basis", "source_url"))
+                                     for field in ("symbol", "isin", "period_end", "period_type", "basis", "published_on", "source_url"))
                 documents[document_key].append(document)
     def key(record):
         return tuple(str(record.get(field) or "").strip().upper() for field in
@@ -77,13 +77,16 @@ def reconcile_filing_values(financials_csv, transcriptions_csv, output_dir, docu
                         status = "VALUES_MATCH_UNVERIFIED_TRANSCRIPTION"
                 except (InvalidOperation, ValueError):
                     status = "INVALID_FINANCIAL_VALUES"
-        rows.append({"row": number, "symbol": financial["symbol"],
-                     "period_end": financial["period_end"], "status": status,
+        rows.append({"row": number, "symbol": financial["symbol"], "isin": financial["isin"],
+                     "period_end": financial["period_end"], "period_type": financial["period_type"],
+                     "basis": financial["basis"], "published_on": financial["published_on"],
+                     "source_url": financial["source_url"], "status": status,
                      "certified": False})
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     with (out / "filing_value_reconciliation.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=["row", "symbol", "period_end", "status", "certified"])
+        writer = csv.DictWriter(stream, fieldnames=["row", "symbol", "isin", "period_end", "period_type", "basis",
+                                                       "published_on", "source_url", "status", "certified"])
         writer.writeheader()
         writer.writerows(rows)
     result = {"rows": len(rows), "status_counts": dict(Counter(x["status"] for x in rows)),
