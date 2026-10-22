@@ -39,6 +39,15 @@ class HistoricalReplayTests(unittest.TestCase):
         result = replay_breakout_rules(c, h, l, v, start=c.index[65], end=c.index[65])
         self.assertEqual(result.iloc[0]["Outcome"], "STOP_BREACH")
 
+    def test_signal_never_uses_future_candles(self):
+        c, h, l, v = self.fixture()
+        full = replay_breakout_rules(c, h, l, v, start=c.index[65], end=c.index[65])
+        partial = replay_breakout_rules(c.iloc[:66], h.iloc[:66],
+                                        l.iloc[:66], v.iloc[:66], start=c.index[65])
+        self.assertEqual(full.iloc[0]["Pivot"], partial.iloc[0]["Pivot"])
+        self.assertEqual(full.iloc[0]["Volume_Ratio"], partial.iloc[0]["Volume_Ratio"])
+        self.assertEqual(full.iloc[0]["Stop"], partial.iloc[0]["Stop"])
+
     def test_misaligned_input_fails(self):
         c, h, l, v = self.fixture()
         with self.assertRaises(ValueError):
