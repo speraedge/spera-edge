@@ -59,7 +59,8 @@ def trading_readiness(scored, membership, financial_records, period_end, *, acqu
             "symbol": candidate["symbol"], "isin": candidate["isin"],
             "research_percentile": candidate["research_percentile"],
             "evidence_reason": request["reason"],
-            "acquisition_status": status, "gates": gates,\n            "setup_score": float(setup["VCP_Score"]) if setup_review else None,
+            "acquisition_status": status, "gates": gates,
+            "setup_score": float(setup["VCP_Score"]) if setup_review else None,
             "decision": "REVIEW_REQUIRED",
             "eligible_for_trading": False, "certified": False,
         })
