@@ -17,6 +17,9 @@ def render_trader_readiness(leadership, membership, setups, period_end, *,
     if leadership is None or membership is None:
         st.warning("Validated leadership and official ISIN membership required.")
         return
+    if not {'Symbol', 'ISIN Code'}.issubset(membership.columns):
+        st.warning('Readiness unavailable: saved membership lacks official ISIN identities. A new evidence pipeline snapshot is required; identities are never inferred.')
+        return
     scored = apply_frozen_v1_scores(leadership.copy())
     result = trading_readiness(scored, membership, [], period_end,
                                setup_evidence=setups, snapshot_fresh=True)
