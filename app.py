@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from edge_core.analytics import stage2_template, market_breadth
 from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
+from edge_core.historical_replay import replay_breakout_rules
 from edge_core.breadth_breakout_bridge import breadth_breakout_summary
 from edge_core.historical_leadership_bridge import historical_leadership_context, leadership_breakout_summary
 from edge_core.momentum_v1 import apply_frozen_v1_scores
@@ -82,6 +83,42 @@ with tabs[0]:
                            "not executable stop fills.")
                 st.dataframe(numbered(horizon_summary), use_container_width=True)
                 export_section("Breakout horizon comparison", horizon_summary, "edge_breakout_horizons")
+                with st.expander("Historical OHLCV rule replay (research only)", expanded=False):
+                    st.caption("Uses the existing saved Upstox OHLCV snapshot; no new API request. "
+                               "Signal-day inputs exclude future candles. Current-universe and "
+                               "corporate-action limitations prevent certified return claims.")
+                    available_sessions = prices.index
+                    default_start = available_sessions[max(0, len(available_sessions) - 252)].date()
+                    replay_start = st.date_input("Replay from", value=default_start,
+                                                 min_value=available_sessions[0].date(),
+                                                 max_value=available_sessions[-1].date(),
+                                                 key="edge_replay_start")
+                    replay_end = st.date_input("Replay through", value=available_sessions[-1].date(),
+                                               min_value=available_sessions[0].date(),
+                                               max_value=available_sessions[-1].date(),
+                                               key="edge_replay_end")
+                    if st.button("Run historical rule replay", key="edge_run_replay"):
+                        if replay_start > replay_end:
+                            st.error("Replay start must not exceed end.")
+                        else:
+                            with st.spinner("Evaluating historical breakout rules..."):
+                                replay = replay_breakout_rules(
+                                    prices, breakout_high, low_history, breakout_volume,
+                                    start=replay_start, end=replay_end)
+                            st.session_state["edge_replay_result"] = replay
+                    replay = st.session_state.get("edge_replay_result")
+                    if replay is not None:
+                        resolved = replay["Outcome"].isin(["SUCCESS", "FAILURE", "STOP_BREACH"])
+                        wins = int((replay["Outcome"] == "SUCCESS").sum())
+                        total = int(resolved.sum())
+                        st.caption(f"Signals: {len(replay)} | Resolved: {total} | "
+                                   f"Successes: {wins} | Stop breaches: "
+                                   f"{int((replay['Outcome'] == 'STOP_BREACH').sum())} | "
+                                   f"Unresolved: {len(replay)-total}. "
+                                   "This is an outcome study, not a net-return backtest.")
+                        st.dataframe(numbered(replay.tail(250)), use_container_width=True)
+                        export_section("Historical rule replay", replay, "edge_historical_rule_replay")
+
             m1, m2, m3 = st.columns(3)
             m1.metric("Qualified breakouts", health["qualified"])
             m2.metric("Resolved outcomes", health["resolved"])
