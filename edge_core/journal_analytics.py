@@ -34,14 +34,13 @@ def equity_curve(events, marks, *, initial_cash=None):
     if marks.index.tz is not None:
         return pd.DataFrame(columns=columns), INSUFFICIENT_HISTORY
     sessions = marks.index.normalize()
-    if sessions.has_duplicates or len(events) == 0:
+    if sessions.has_duplicates or not sessions.equals(marks.index) or len(events) == 0:
         return pd.DataFrame(columns=columns), INSUFFICIENT_HISTORY
     ordered = sorted(events, key=lambda event: int(event.get("revision", 0)))
     if len({e.get("revision") for e in ordered}) != len(ordered):
         return pd.DataFrame(columns=columns), INSUFFICIENT_HISTORY
     for event in ordered:
         try:
-            event["_unused"] if False else None
             stamp = pd.Timestamp(event["created_utc"])
             if stamp.tzinfo is None or not all(k in event for k in ("kind", "symbol", "quantity", "price", "fee")):
                 raise ValueError("Missing event metadata")
