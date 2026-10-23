@@ -16,6 +16,8 @@ jobs:
         run: python -m unittest discover -s tests -p 'test_phase2_symbol_charts.py' -v
       - name: Full EDGE unit test suite
         run: python -m unittest discover -s tests -v
+      - name: Explicit Phase 3 privacy and D1 isolation regression
+        run: python -m unittest discover -s tests -p 'test_phase3_fundamentals.py' -v
       - name: Mandatory saved OHLCV replay regression (fail closed)
         run: PYTHONPATH=. python tools/verify_saved_ohlcv_replay.py
       - uses: actions/upload-artifact@v4
