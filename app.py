@@ -348,6 +348,14 @@ elif page == "Trade Desk":
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(close, volume, high, low)
+                ranks_rs = snapshot_table("leadership")
+                if ranks_rs is None or not {"Symbol", "RS_Universe_252D_Pctile"}.issubset(ranks_rs.columns) or ranks_rs["Symbol"].duplicated().any():
+                    st.error("RS ≥70 hard filter unavailable: leadership percentile data missing or invalid.")
+                    candidates = candidates.iloc[0:0]
+                else:
+                    passed_rs = set(ranks_rs.loc[pd.to_numeric(ranks_rs["RS_Universe_252D_Pctile"], errors="coerce").ge(70), "Symbol"])
+                    candidates = candidates.loc[candidates["Symbol"].isin(passed_rs)].copy()
+                st.caption("SPERA research hard filter: RS_Universe_252D_Pctile ≥70; missing scores excluded.")
                 st.dataframe(numbered(candidates), use_container_width=True)
                 export_section("VCP research candidates", candidates, "vcp_candidates")
                 with st.expander("Candidate historical breakout evidence", expanded=False):
