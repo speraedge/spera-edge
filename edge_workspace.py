@@ -553,10 +553,17 @@ def render_private_portfolio(close, snapshot_usable):
         st.write(summary)
         from edge_core.indian_risk_gates import trailing_stop_reminder
         positions = positions.copy()
-        positions['2R_Journal_Reminder'] = positions.apply(
-            lambda row: bool(pd.notna(row['Mark']) and trailing_stop_reminder(
-                row['Average_Cost'], row['Stop'], row['Mark'])), axis=1)
-        st.caption('Green rows: mark has reached at least 2R from the current recorded stop. Journal reminder only; no automatic exit.')
+        # Original 1R is immutable: use the first recorded BUY, never the moved stop.
+        first_buys = {}
+        for event in events:
+            if event.get('kind') == 'BUY':
+                first_buys.setdefault(event['symbol'], event)
+        def original_r_reminder(row):
+            first = first_buys.get(row['Symbol'])
+            return bool(first and pd.notna(row['Mark']) and
+                        trailing_stop_reminder(first['price'], first['stop'], row['Mark']))
+        positions['2R_Journal_Reminder'] = positions.apply(original_r_reminder, axis=1)
+        st.caption('Green rows: mark has reached at least 2R from the first BUY entry and its original initial stop. Journal reminder only; no automatic exit.')
         def _reminder_style(row):
             return ['background-color: #d8f3dc' if row['2R_Journal_Reminder'] else '' for _ in row]
         st.dataframe(numbered(positions).style.apply(_reminder_style, axis=1), use_container_width=True)
