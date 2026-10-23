@@ -37,7 +37,7 @@ class CanonicalSnapshotOhlcvTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             self.build(root, corrupt=True)
-            with self.assertRaisesRegex(ValueError, "Invalid price"):
+            with self.assertRaisesRegex(ValueError, "Opening prices outside observed candle range"):
                 validate_snapshot(root)
 
 
