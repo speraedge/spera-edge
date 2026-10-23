@@ -347,10 +347,14 @@ elif page == "Trade Desk":
     last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
     plan_store = None
     try:
-        allowed = st.secrets.get("EDGE_JOURNAL_ALLOWED_EMAILS", [])
+        try:
+            allowed = st.secrets.get("EDGE_JOURNAL_ALLOWED_EMAILS", [])
+            auth_configured = "auth" in st.secrets
+        except FileNotFoundError:
+            allowed, auth_configured = [], False
         if isinstance(allowed, str):
             allowed = [item.strip() for item in allowed.split(",")]
-        if not allowed or "auth" not in st.secrets:
+        if not allowed or not auth_configured:
             st.warning("Saved plans locked: owner authentication not configured.")
         elif not st.user.is_logged_in:
             if st.button("Sign in to saved plans", key="plans_sign_in"):
