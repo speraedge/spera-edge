@@ -48,6 +48,15 @@ def validate_snapshot(directory="data/latest"):
         if df.index.has_duplicates or df.columns.has_duplicates or len(df) < 200:
             raise ValueError("Invalid OHLCV sessions or columns: " + name)
         frames[name] = df
+    open_path = root / "open.csv"
+    if open_path.is_file():
+        opened = pd.read_csv(open_path, index_col="Date")
+        if (not opened.index.equals(frames["close"].index)
+                or not opened.columns.equals(frames["close"].columns)
+                or opened.isna().any().any()):
+            raise ValueError("Opening price alignment or completeness failure")
+        if ((opened > frames["high"]) | (opened < frames["low"])).any().any():
+            raise ValueError("Opening prices outside observed candle range")
     close = frames["close"]
     if len(close.columns) != retrieved:
         raise ValueError("Retrieved symbol count does not match close columns")
