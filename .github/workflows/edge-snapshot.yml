@@ -2,10 +2,8 @@ name: NIFTY 500 automatic research snapshot
 on:
   workflow_dispatch:
   schedule:
-    # 19:00 IST Monday-Friday: attempt EOD publication; retry if provider data lags.
-    - cron: '30 13 * * 1-5'
-    # 09:00 IST Tuesday-Saturday: catch up after delayed provider updates.
-    - cron: '30 3 * * 2-6'
+    # 20:00 IST Monday-Friday: single scheduled EOD attempt, one stale-only retry.
+    - cron: '30 14 * * 1-5'
 permissions:
   contents: write
 concurrency:
@@ -29,8 +27,8 @@ jobs:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
         run: |
           set -uo pipefail
-          for attempt in 1 2 3 4; do
-            echo "Snapshot attempt $attempt/4"
+          for attempt in 1 2; do
+            echo "Snapshot attempt $attempt/2"
             log_file="$(mktemp)"
             # Retry both build-time and post-build freshness failures.
             if (python -m tools.publish_edge_snapshot && python - <<'PY'
@@ -57,12 +55,12 @@ jobs:
               exit 1
             fi
             rm -f "$log_file"
-            if [ "$attempt" -eq 4 ]; then
-              echo "STALE_PROVIDER_SNAPSHOT: exhausted four attempts; no publication"
+            if [ "$attempt" -eq 2 ]; then
+              echo "STALE_PROVIDER_SNAPSHOT: exhausted two attempts; no publication"
               exit 1
             fi
-            echo "STALE_PROVIDER_SNAPSHOT: waiting 15 minutes before retry"
-            sleep 900
+            echo "STALE_PROVIDER_SNAPSHOT: waiting 30 minutes before single retry"
+            sleep 1800
           done
       - name: Validate complete snapshot files and metadata
         run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
