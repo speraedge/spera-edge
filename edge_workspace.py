@@ -551,7 +551,15 @@ def render_private_portfolio(close, snapshot_usable):
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
-        st.dataframe(numbered(positions), use_container_width=True)
+        from edge_core.indian_risk_gates import trailing_stop_reminder
+        positions = positions.copy()
+        positions['2R_Journal_Reminder'] = positions.apply(
+            lambda row: bool(pd.notna(row['Mark']) and trailing_stop_reminder(
+                row['Average_Cost'], row['Stop'], row['Mark'])), axis=1)
+        st.caption('Green rows: mark has reached at least 2R from the current recorded stop. Journal reminder only; no automatic exit.')
+        def _reminder_style(row):
+            return ['background-color: #d8f3dc' if row['2R_Journal_Reminder'] else '' for _ in row]
+        st.dataframe(numbered(positions).style.apply(_reminder_style, axis=1), use_container_width=True)
         export_section('Private positions', positions, 'private_positions')
         st.caption('Average-cost accounting includes entry/exit fees. Unrealized P&L excludes estimated exit costs. Open risk uses latest mark to stop, floored at zero; stops do not guarantee execution.')
         if not summary['marks_complete']:
