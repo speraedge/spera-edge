@@ -335,6 +335,8 @@ elif page == "Leadership Scanner":
         export_section("Price template diagnostics", stage2_records, "price_template")
         st.caption("Stage 2 relative-strength requirement must be verified separately. Price-only pass is not full Stage 2 qualification.")
 elif page == "Trade Desk":
+    from edge_fundamentals_ui import render_fundamentals
+    render_fundamentals(SNAPSHOT_DIR)
     st.subheader("Trade Desk")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
     with st.container():

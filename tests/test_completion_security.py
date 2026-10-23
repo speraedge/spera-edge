@@ -112,7 +112,9 @@ class CompletionSecurityTests(unittest.TestCase):
         self.assertFalse(classify_leadership(ranks, close)['SEPA_Certified'].any())
         entries = entry_diagnostics(close, close + 1, close - 1, close * 0 + 1000, dates[-1])
         self.assertFalse(entries['SEPA_Certified'].any())
-        self.assertGreater(plan_quantity(100000, 1, 100, 90, 0, 0)['quantity'], 0)
+        self.assertGreater(plan_quantity(100000, 1, 100, 95, 0, 0)['quantity'], 0)
+        with self.assertRaisesRegex(ValueError, 'maximum initial stop distance'):
+            plan_quantity(100000, 1, 100, 90, 0, 0)
         payload = validate_decision('SYNTHETIC', str(dates[250].date()), 'TAKE', 'OTHER', 'Synthetic workflow test')
         self.query('INSERT INTO edge_setup_decisions VALUES (?,?,?,?)',
                    ('synthetic-owner', 'decision', 'synthetic-created-time', json.dumps(payload)))
