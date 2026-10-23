@@ -67,7 +67,11 @@ jobs:
           git config user.email "spera-edge-bot@users.noreply.github.com"
           # Keep the freshly generated snapshot while rebasing onto concurrent code changes.
           # Never force-push or overwrite unrelated commits.
+          # Fail closed if actual opening prices are absent or excluded from Git.
+          test -s data/latest/open.csv || { echo "MISSING_OPEN_CSV"; exit 1; }
+          git add -f data/latest/open.csv
           git add data/latest
+          git ls-files --error-unmatch data/latest/open.csv
           if ! git diff --cached --quiet; then
             git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
             for attempt in 1 2 3 4 5; do
