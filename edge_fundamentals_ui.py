@@ -12,7 +12,7 @@ def render_fundamentals(root=Path("data/latest")):
     st.subheader("Fundamentals (research only)")
     path = Path(root) / "fundamentals_auto.csv"
     if not path.exists():
-        st.info("Automatic fundamentals have not been published yet.")
+        st.info("Fundamentals unavailable. Please trigger the fundamentals workflow manually.")
         return
     try:
         validate_public_csv(path)
@@ -22,7 +22,7 @@ def render_fundamentals(root=Path("data/latest")):
         return
     symbols = auto["Symbol"].tolist()
     if not symbols:
-        st.info("No fundamentals available.")
+        st.info("Fundamentals unavailable. Please trigger the fundamentals workflow manually.")
         return
     symbol = st.selectbox("Company", symbols, key="edge_fundamentals_symbol")
     baseline = auto.loc[auto["Symbol"] == symbol].iloc[0].to_dict()
