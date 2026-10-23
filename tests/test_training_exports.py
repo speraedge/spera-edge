@@ -44,7 +44,7 @@ class TrainingExports(unittest.TestCase):
             with self.subTest(name=name):
                 frame = pd.DataFrame(columns)
                 csv = export_bytes(frame, "CSV", name)
-                self.assertTrue(csv.startswith(b"\\xef\\xbb\\xbf"))
+                self.assertTrue(csv.startswith(bytes((0xEF, 0xBB, 0xBF))))
                 parsed = pd.read_csv(BytesIO(csv))
                 self.assertEqual(len(parsed), 1)
                 self.assertEqual(parsed.loc[0, "No."], 1)
