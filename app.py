@@ -340,7 +340,7 @@ elif page == "Trade Desk":
     st.subheader("Trade Desk")
     from edge_core.saved_trade_plans import OwnerPlanStore, evaluate_plans, status
     from edge_core.d1_store import d1_query
-    from edge_core.auth import identity_owner
+    from edge_workspace import identity_owner
     st.subheader("Saved Trade Plans")
     st.caption("Private D1-backed research plans. Login required. Invalidated plans are retained in owner-scoped D1 audit history.")
     desk_close = snapshot_table("close") if edge_meta else None
