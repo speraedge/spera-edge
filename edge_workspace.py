@@ -195,16 +195,6 @@ class Ledger:
         validate_revisions(rows)
         return [dict(json.loads(row['payload']), event_id=row['event_id'], revision=row['revision'], created_utc=row['created_utc']) for row in rows]
 
-    def validate_stop_update(self, kind, symbol, new_stop, events=None):
-        if kind not in ('BUY', 'STOP'):
-            return
-        if events is None:
-            events = self.events()
-        positions, _ = self._replay(events, {})
-        opened = positions.loc[positions['Symbol'].eq(str(symbol).strip().upper())]
-        if not opened.empty and float(new_stop) < float(opened.iloc[0]['Stop']):
-            raise ValueError('Stop widening prohibited: protective stop cannot be lowered')
-
     def append(self, kind, symbol, *, quantity=0, price=0, stop=0, fee=0, note='', event_id=None, expected_revision=None):
         events = self.events()
         event_id = event_id or str(uuid.uuid4())
@@ -217,7 +207,6 @@ class Ledger:
         revision = len(events)
         if expected_revision is not None and revision != expected_revision:
             raise ValueError('Ledger changed in another session; refresh before recording')
-        self.validate_stop_update(kind, payload['symbol'], stop, events)
         self._replay(events + [payload], {})
         rows = self.query('''INSERT INTO edge_trade_events(owner_id,event_id,revision,created_utc,payload)
             SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM edge_trade_events WHERE owner_id=?)=?
