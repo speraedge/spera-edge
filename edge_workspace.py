@@ -342,6 +342,19 @@ def render_entries(close, high, low, volume, last_session):
     st.subheader('Completed-session pivots and volume confirmation')
     table = entry_diagnostics(close, high, low, volume, last_session)
     st.caption('Pivot: highest high of 20 prior sessions; volume: at least 1.5× prior 50-session mean. Stop: prior 10-session low. VCP diagnostic: shrinking disjoint 20/10/5-session ranges, final range ≤8%. These are research heuristics, not certified SEPA signals. Gaps and slippage can exceed stop risk.')
+    from pathlib import Path
+    root = Path(__file__).parent / 'data' / 'latest'
+    rank_path = root / 'leadership.csv'
+    if not rank_path.is_file():
+        st.error('RS hard filter unavailable: leadership snapshot missing')
+        return table.iloc[0:0]
+    ranks = pd.read_csv(rank_path)
+    if not {'Symbol', 'RS_Universe_252D_Pctile'}.issubset(ranks.columns) or ranks['Symbol'].duplicated().any():
+        st.error('RS hard filter unavailable: valid percentile column required')
+        return table.iloc[0:0]
+    eligible_rs = set(ranks.loc[pd.to_numeric(ranks['RS_Universe_252D_Pctile'], errors='coerce').ge(70), 'Symbol'])
+    table = table.loc[table['Symbol'].isin(eligible_rs)].copy()
+    st.caption('Hard research candidate filter: NIFTY 500 RS percentile ≥70. Missing RS is excluded.')
     st.dataframe(numbered(table), use_container_width=True)
     export_section('Entry diagnostics', table, 'entry_diagnostics')
     eligible = table.loc[table['Evidence'].eq('COMPLETED_SESSION_RESEARCH')]
@@ -349,6 +362,9 @@ def render_entries(close, high, low, volume, last_session):
         watch = st.multiselect('Candidate watchlist', eligible['Symbol'].tolist())
         if watch:
             export_section('Selected watchlist', eligible[eligible['Symbol'].isin(watch)], 'selected_watchlist')
+    defensive = market_report(close)['condition'] == 'DEFENSIVE'
+    if defensive:
+        st.error('DEFENSIVE MARKET REGIME — sizing disabled. Candidate research remains visible.')
     st.subheader('Risk-based position plan')
     st.caption('Planning inputs only. Enter actual account equity, total marked exposure and total open mark-to-stop risk. Private ledger totals are available after sign-in on Portfolio & Journal.')
     equity = st.number_input('Planning equity (INR)', min_value=1.0, value=500000.0)
@@ -357,8 +373,12 @@ def render_entries(close, high, low, volume, last_session):
     exposure = st.number_input('Planning current exposure (INR)', min_value=0.0, value=0.0)
     entry = st.number_input('Planned entry price', min_value=0.01, value=100.0)
     stop = st.number_input('Planned protective stop', min_value=0.01, value=95.0)
+    target = st.number_input('Optional planned target (0 = no target)', min_value=0.0, value=0.0)
     try:
-        st.write(plan_quantity(equity, risk, entry, stop, committed, exposure))
+        if defensive:
+            st.info('Sizing unavailable while market breadth is DEFENSIVE.')
+        else:
+            st.write(plan_quantity(equity, risk, entry, stop, committed, exposure, target=target if target > 0 else None))
         st.caption('Caps: 5% aggregate open risk, 100% total exposure, 10% per new position. All values are planning assumptions; verify fills and available cash independently.')
     except ValueError as exc:
         st.error(str(exc))
