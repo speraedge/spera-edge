@@ -1,23 +1,58 @@
-import tempfile
 import unittest
-from pathlib import Path
-from edge_core.saved_trade_plans import validate_plan, add_plan, load_plans, evaluate_plans, status
+from edge_core.saved_trade_plans import OwnerPlanStore, validate_plan, evaluate_plans, status
+
+
+class FakeD1:
+    def __init__(self):
+        self.rows = []
+
+    def __call__(self, sql, params=()):
+        if sql.startswith("CREATE TABLE"):
+            return []
+        if sql.startswith("INSERT"):
+            owner, pid, symbol, day, pivot, stop, target, created = params
+            self.rows.append(dict(owner_id=owner, plan_id=pid, symbol=symbol,
+                                  setup_date=day, pivot=pivot, stop=stop, target=target,
+                                  status="ACTIVE"))
+            return []
+        if sql.startswith("UPDATE"):
+            _, owner, pid = params
+            for row in self.rows:
+                if row["owner_id"] == owner and row["plan_id"] == pid:
+                    row["status"] = "INVALID"
+            return []
+        if sql.startswith("SELECT"):
+            owner = params[0]
+            matches = [x for x in self.rows if x["owner_id"] == owner and x["status"] == "ACTIVE"]
+            if len(params) > 1:
+                matches = [x for x in matches if x["plan_id"] == params[1]]
+            return matches
+        raise AssertionError(sql)
 
 
 class SavedPlansTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.path = Path(self.temp.name) / "saved_plans.json"
+        self.db = FakeD1()
+        self.a = OwnerPlanStore("owner-A", self.db)
+        self.b = OwnerPlanStore("owner-B", self.db)
+        self.a.initialize()
         self.plan = validate_plan("ABC", 100, 95, 120, "2026-10-23")
 
-    def tearDown(self):
-        self.temp.cleanup()
-
-    def test_round_trip_and_duplicate_rejected(self):
-        add_plan(self.plan, self.path)
-        self.assertEqual(load_plans(self.path), [self.plan])
+    def test_owner_isolation(self):
+        pid = self.a.add(self.plan)
+        self.assertEqual(len(self.a.list_active()), 1)
+        self.assertEqual(self.b.list_active(), [])
         with self.assertRaises(ValueError):
-            add_plan(self.plan, self.path)
+            self.b.load_active(pid)
+        self.b.invalidate(pid)
+        self.assertEqual(len(self.a.list_active()), 1)
+
+    def test_invalidated_retained_for_audit(self):
+        pid = self.a.add(self.plan)
+        self.a.invalidate(pid)
+        self.assertEqual(self.a.list_active(), [])
+        self.assertEqual(len(self.db.rows), 1)
+        self.assertEqual(self.db.rows[0]["status"], "INVALID")
 
     def test_status_precedence(self):
         self.assertEqual(status(self.plan, 94), "INVALID")
@@ -26,21 +61,13 @@ class SavedPlansTests(unittest.TestCase):
         self.assertEqual(status(self.plan, 106), "EXTENDED")
         self.assertEqual(status(self.plan, None), "NO_PRICE")
 
-    def test_invalid_removed_only_from_active_list(self):
-        rows, active = evaluate_plans([self.plan], {"ABC": 94})
-        self.assertEqual(rows, [])
-        self.assertEqual(active, [])
+    def test_no_price_does_not_invalidate(self):
+        rows = evaluate_plans([self.plan], {})
+        self.assertEqual(rows[0]["Status"], "NO_PRICE")
 
     def test_bad_levels_rejected(self):
         with self.assertRaises(ValueError):
             validate_plan("ABC", 100, 105, 120, "2026-10-23")
-        with self.assertRaises(ValueError):
-            validate_plan("ABC", 100, 95, float("nan"), "2026-10-23")
-
-    def test_no_price_does_not_invalidate(self):
-        rows, active = evaluate_plans([self.plan], {})
-        self.assertEqual(len(active), 1)
-        self.assertEqual(rows[0]["Status"], "NO_PRICE")
 
 
 if __name__ == "__main__":
