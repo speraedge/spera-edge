@@ -338,6 +338,54 @@ elif page == "Trade Desk":
     from edge_fundamentals_ui import render_fundamentals
     render_fundamentals(SNAPSHOT_DIR)
     st.subheader("Trade Desk")
+    from edge_core.saved_trade_plans import load_plans, add_plan, evaluate_plans, save_plans
+    st.subheader("Saved Trade Plans")
+    st.caption("Research watch plans only; not orders or brokerage fills. Local JSON storage on Streamlit may be ephemeral or shared across app visitors. Do not enter confidential plans.")
+    desk_close = snapshot_table("close") if edge_meta else None
+    last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
+    try:
+        saved = load_plans()
+        evaluated, active = evaluate_plans(saved, last_prices)
+        if len(active) != len(saved):
+            save_plans(active)
+            st.info("Plans with latest price below their stop were removed from the active list.")
+        if evaluated:
+            st.dataframe(pd.DataFrame(evaluated), use_container_width=True, hide_index=True)
+            for i, plan in enumerate(evaluated):
+                cols = st.columns([3, 1, 1])
+                cols[0].write(f"{plan['Symbol']} · {plan['Setup Date']} · {plan['Status']}")
+                if cols[1].button("Load Plan", key=f"load_plan_{i}"):
+                    st.session_state["saved_plan_selected"] = plan
+                    st.rerun()
+                if plan["Status"] == "TRIGGERED":
+                    if cols[2].button("Calculate Size", key=f"size_plan_{i}", disabled=not snapshot_usable):
+                        st.session_state["saved_plan_selected"] = plan
+                        st.session_state["saved_plan_size_requested"] = True
+                        st.rerun()
+        else:
+            st.info("No active saved plans.")
+    except (OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+        st.warning(f"Saved plans unavailable: {exc}")
+    selected_plan = st.session_state.get("saved_plan_selected")
+    if selected_plan:
+        st.write({"Loaded research plan": selected_plan})
+        if st.session_state.pop("saved_plan_size_requested", False):
+            st.info("Review the loaded entry and stop in the private sizing calculator. Execution remains locked when data is stale.")
+    with st.form("save_trade_plan"):
+        plan_symbol = st.text_input("Plan symbol", key="plan_symbol")
+        plan_pivot = st.number_input("Pivot / entry", min_value=0.01, value=100.0, key="plan_pivot")
+        plan_stop = st.number_input("Initial stop", min_value=0.01, value=95.0, key="plan_stop")
+        plan_target = st.number_input("Target", min_value=0.01, value=115.0, key="plan_target")
+        plan_date = st.date_input("Setup date", key="plan_date")
+        plan_submit = st.form_submit_button("Save Plan")
+    if plan_submit:
+        try:
+            add_plan({"Symbol": plan_symbol, "Pivot": plan_pivot, "Stop": plan_stop,
+                      "Target": plan_target, "Setup Date": plan_date.isoformat()})
+            st.success("Research plan saved to local JSON.")
+            st.rerun()
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            st.error(f"Plan not saved: {exc}")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
     with st.container():
         st.caption("Automatic daily OHLCV snapshot; minimum 253 aligned sessions.")
