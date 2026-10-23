@@ -11,7 +11,7 @@ from edge_fundamentals import RateLimitedSession
 
 ENDPOINT = "https://api.bseindia.com/BseIndiaAPI/api/ListofScripData/w"
 CODE = re.compile(r"^[0-9]{5,7}$")
-SYMBOL = re.compile(r"^[A-Z0-9.\\-&]+$")
+SYMBOL = re.compile(r"^[A-Z0-9.&-]+$")
 
 
 def extract_mapping(payload, official_symbols):
