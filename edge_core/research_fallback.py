@@ -47,6 +47,8 @@ def load_leadership(latest_dir, history_dir, *, latest_date=None, current_date=N
                 frame = frame.rename(columns={"Ticker": "Symbol"})
             if "Data_Quality" not in frame.columns:
                 continue
+            if "AnnVol" not in frame.columns and "IVOL_Annualized" in frame.columns:
+                frame["AnnVol"] = frame["IVOL_Annualized"]
             if _valid(frame):
                 return frame, str(entry["weekly_key"]), True
     except (OSError, ValueError, KeyError, TypeError, pd.errors.ParserError):
