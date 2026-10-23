@@ -19,7 +19,7 @@ class ResearchModeTests(unittest.TestCase):
         self.assertIn('render_market(prices)', self.app)
 
     def test_informational_last_session_banner(self):
-        self.assertIn('st.info(f"Note: Displaying data from {last_session.isoformat()}. Research only. Execution forms are locked.")', self.app)
+        self.assertIn('st.info(f"Note: Displaying research data from {last_session.isoformat()}. Execution forms are locked until fresh price data is available.")', self.app)
         self.assertNotIn('st.error(f"Snapshot does not match', self.app)
 
     def test_private_journal_is_disabled_and_guarded_server_side(self):
