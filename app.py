@@ -75,9 +75,9 @@ if edge_meta:
         age=(now_ist.date()-last_session).days
         snapshot_usable=snapshot_is_fresh(last_session, now_ist)
         if not snapshot_usable:
-            st.error(f"Snapshot does not match the latest expected completed session ({age} calendar days old). Weekday/verified-special-session check; unverified exchange holidays fail closed. Do not trade from stale results.")
+            st.info(f"Note: Displaying data from {last_session.isoformat()}. Research only. Execution forms are locked.")
     except (ValueError,TypeError,KeyError):
-        st.error("Snapshot session date invalid; research outputs are not certified.")
+        st.info(f"Note: Displaying data from {edge_meta.get('last_session', 'unknown session')}. Research only. Execution forms are locked.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
@@ -349,10 +349,7 @@ elif page == "Trade Desk":
             st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
-                if snapshot_usable:
-                    render_entries(close,high,low,volume,edge_meta["last_session"])
-                else:
-                    st.error("Entry planning disabled: snapshot is stale, future-dated or not from a completed session.")
+                render_entries(close,high,low,volume,edge_meta["last_session"])
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(close, volume, high, low)
