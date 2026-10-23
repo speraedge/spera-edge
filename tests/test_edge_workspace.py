@@ -44,6 +44,9 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(plan_quantity(100000, 1, 100, 95, 5000, 0)['quantity'], 0)
         with self.assertRaises(ValueError):
             plan_quantity(100000, 1, 100, 101, 0, 0)
+        with self.assertRaisesRegex(ValueError, 'maximum initial stop distance'):
+            plan_quantity(100000, 1, 100, 90, 0, 0)
+        self.assertGreater(plan_quantity(100000, 1, 100, 92, 0, 0)['quantity'], 0)
 
     def test_identity_requires_verified_allowed_email_and_subject(self):
         identity = {'email': 'owner@example.com', 'email_verified': True, 'sub': '123', 'iss': 'https://issuer'}
