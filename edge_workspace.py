@@ -78,18 +78,49 @@ def entry_diagnostics(close, high, low, volume, as_of):
     return pd.DataFrame(records)
 
 
-def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10):
+def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10, *, target=None, symbol=None, positions=None, membership=None, atr_candles=None, earnings_within_five_days=None, liquidity_candles=None, roundtrip_cost_pct=0.006):
     values = (exposure, exposure_pct, single_pct)
     if not all(math.isfinite(float(value)) for value in values) or exposure < 0 or not 0 < exposure_pct <= 100 or not 0 < single_pct <= 100:
         raise ValueError('Invalid exposure limits')
-    if not all(math.isfinite(float(v)) for v in (entry, stop)) or entry <= 0 or stop <= 0 or stop >= entry:
-        raise ValueError('Invalid long entry or stop')
-    if (float(entry) - float(stop)) / float(entry) > 0.08:
-        raise ValueError('maximum initial stop distance exceeded (8%)')
+    if not all(math.isfinite(float(v)) for v in (entry, stop)) or entry <= 0 or stop >= entry or stop <= 0:
+        raise ValueError('Invalid entry or stop')
+    if (entry - stop) / entry > 0.08:
+        raise ValueError('SPERA policy: maximum initial stop distance is 8%')
+    from edge_core.indian_risk_gates import (atr_stop, require_earnings_clear, require_liquidity, net_reward_risk)
+    require_earnings_clear(earnings_within_five_days)
+    if atr_candles is None or liquidity_candles is None:
+        raise ValueError('ATR and liquidity evidence required')
+    computed_stop = atr_stop(entry, *atr_candles)
+    if abs(float(stop) - computed_stop) > max(0.01, entry * 0.0001):
+        raise ValueError('Initial stop must match 2.5x ATR')
+    require_liquidity(*liquidity_candles)
+    if target is None:
+        raise ValueError('Target required for net reward-to-risk validation')
+    rr = net_reward_risk(entry, stop, target, 1, roundtrip_cost_pct=roundtrip_cost_pct)
+    if rr['net_rr'] < 2:
+        raise ValueError('Net reward-to-risk must be at least 2:1')
     sizing = position_size(equity, risk_pct, entry, stop)
     budget = risk_budget(equity, risk_pct, committed_risk, heat_pct)
     notional_capacity = max(0, min(equity * exposure_pct / 100 - exposure, equity * single_pct / 100))
     quantity = min(sizing['quantity'], math.floor(budget['new_trade_budget'] / sizing['risk_per_share']), math.floor(notional_capacity / entry))
+    if positions is not None or membership is not None or symbol is not None:
+        if positions is None or membership is None or not symbol:
+            raise ValueError('Industry cap requires actual ledger positions, official membership and symbol')
+        if not {'Symbol', 'Industry'}.issubset(membership.columns) or membership['Symbol'].duplicated().any():
+            raise ValueError('Invalid official industry membership')
+        industries = membership.set_index('Symbol')['Industry']
+        if symbol not in industries or pd.isna(industries[symbol]):
+            raise ValueError('Unknown industry for proposed trade')
+        industry = industries[symbol]
+        current = 0.0
+        for _, holding in positions.iterrows():
+            ticker = holding['Symbol']
+            if ticker not in industries or pd.isna(industries[ticker]) or pd.isna(holding['Exposure']):
+                raise ValueError('Cannot certify industry exposure from ledger')
+            if industries[ticker] == industry:
+                current += float(holding['Exposure'])
+        if current + quantity * entry > equity * 0.30 + 1e-8:
+            raise ValueError('SPERA policy: 30% industry concentration ceiling exceeded')
     return {'quantity': quantity, 'planned_risk': quantity * sizing['risk_per_share'], 'notional': quantity * entry,
             'available_risk': budget['available_risk'], 'notional_capacity': notional_capacity}
 
@@ -311,6 +342,27 @@ def render_entries(close, high, low, volume, last_session):
     st.subheader('Completed-session pivots and volume confirmation')
     table = entry_diagnostics(close, high, low, volume, last_session)
     st.caption('Pivot: highest high of 20 prior sessions; volume: at least 1.5× prior 50-session mean. Stop: prior 10-session low. VCP diagnostic: shrinking disjoint 20/10/5-session ranges, final range ≤8%. These are research heuristics, not certified SEPA signals. Gaps and slippage can exceed stop risk.')
+    from pathlib import Path
+    root = Path(__file__).parent / 'data' / 'latest'
+    rank_path = root / 'leadership.csv'
+    if not rank_path.is_file():
+        st.error('RS hard filter unavailable: leadership snapshot missing')
+        return table.iloc[0:0]
+    ranks = pd.read_csv(rank_path)
+    if not {'Symbol', 'RS_Universe_252D_Pctile'}.issubset(ranks.columns) or ranks['Symbol'].duplicated().any():
+        st.error('RS hard filter unavailable: valid percentile column required')
+        return table.iloc[0:0]
+    eligible_rs = set(ranks.loc[pd.to_numeric(ranks['RS_Universe_252D_Pctile'], errors='coerce').ge(70), 'Symbol'])
+    from edge_core.indian_risk_gates import average_traded_value20, MIN_ADTV_RUPEES
+    liquid_symbols = set()
+    for sym in table['Symbol']:
+        try:
+            if average_traded_value20(close[sym], volume[sym]) >= MIN_ADTV_RUPEES:
+                liquid_symbols.add(sym)
+        except (KeyError, ValueError):
+            pass
+    table = table.loc[table['Symbol'].isin(eligible_rs & liquid_symbols)].copy()
+    st.caption('Hard research filters: NIFTY 500 RS percentile ≥70 and 20-day average traded value ≥₹5 crore. Missing evidence is excluded.')
     st.dataframe(numbered(table), use_container_width=True)
     export_section('Entry diagnostics', table, 'entry_diagnostics')
     eligible = table.loc[table['Evidence'].eq('COMPLETED_SESSION_RESEARCH')]
@@ -318,6 +370,9 @@ def render_entries(close, high, low, volume, last_session):
         watch = st.multiselect('Candidate watchlist', eligible['Symbol'].tolist())
         if watch:
             export_section('Selected watchlist', eligible[eligible['Symbol'].isin(watch)], 'selected_watchlist')
+    defensive = market_report(close)['condition'] == 'DEFENSIVE'
+    if defensive:
+        st.error('DEFENSIVE MARKET REGIME — sizing disabled. Candidate research remains visible.')
     st.subheader('Risk-based position plan')
     st.caption('Planning inputs only. Enter actual account equity, total marked exposure and total open mark-to-stop risk. Private ledger totals are available after sign-in on Portfolio & Journal.')
     equity = st.number_input('Planning equity (INR)', min_value=1.0, value=500000.0)
@@ -326,8 +381,26 @@ def render_entries(close, high, low, volume, last_session):
     exposure = st.number_input('Planning current exposure (INR)', min_value=0.0, value=0.0)
     entry = st.number_input('Planned entry price', min_value=0.01, value=100.0)
     stop = st.number_input('Planned protective stop', min_value=0.01, value=95.0)
+    target = st.number_input('Planned target price (required for net 2:1)', min_value=0.0, value=0.0)
+    earnings_near = st.checkbox('Earnings within 5 days?', value=True,
+                                help='Checked or unknown blocks sizing because of gap risk.')
+    st.caption('Select a symbol to use observed OHLCV for ATR(14) and 20-day traded value.')
+    chosen = st.selectbox('Sizing candidate', [''] + eligible['Symbol'].astype(str).tolist()) if not eligible.empty else ''
+    atr_candles = liquidity_candles = None
+    if chosen and chosen in close.columns:
+        atr_candles = (high[chosen], low[chosen], close[chosen])
+        liquidity_candles = (close[chosen], volume[chosen])
+        from edge_core.indian_risk_gates import atr_stop, average_traded_value20
+        try:
+            st.caption(f"Required ATR-based stop: ₹{atr_stop(entry, *atr_candles):.2f}; "
+                       f"20-day average traded value: ₹{average_traded_value20(*liquidity_candles):,.0f}")
+        except ValueError as exc:
+            st.warning(str(exc))
     try:
-        st.write(plan_quantity(equity, risk, entry, stop, committed, exposure))
+        if defensive:
+            st.info('Sizing unavailable while market breadth is DEFENSIVE.')
+        else:
+            st.write(plan_quantity(equity, risk, entry, stop, committed, exposure, target=target if target > 0 else None, atr_candles=atr_candles, liquidity_candles=liquidity_candles, earnings_within_five_days=earnings_near))
         st.caption('Caps: 5% aggregate open risk, 100% total exposure, 10% per new position. All values are planning assumptions; verify fills and available cash independently.')
     except ValueError as exc:
         st.error(str(exc))
@@ -467,7 +540,16 @@ def render_private_portfolio(close, snapshot_usable):
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
-        st.dataframe(numbered(positions), use_container_width=True)
+        from edge_core.indian_risk_gates import original_r_reminders
+        positions = positions.copy()
+        # Only the authenticated owner's chronological first BUY fixes original 1R.
+        reminder_by_symbol = original_r_reminders(events, marks)
+        positions['2R_Journal_Reminder'] = positions['Symbol'].map(
+            reminder_by_symbol).fillna(False).astype(bool)
+        st.caption('Green rows: mark has reached at least 2R from the first BUY entry and its original initial stop. Journal reminder only; no automatic exit.')
+        def _reminder_style(row):
+            return ['background-color: #d8f3dc' if row['2R_Journal_Reminder'] else '' for _ in row]
+        st.dataframe(numbered(positions).style.apply(_reminder_style, axis=1), use_container_width=True)
         export_section('Private positions', positions, 'private_positions')
         st.caption('Average-cost accounting includes entry/exit fees. Unrealized P&L excludes estimated exit costs. Open risk uses latest mark to stop, floored at zero; stops do not guarantee execution.')
         if not summary['marks_complete']:

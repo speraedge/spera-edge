@@ -40,8 +40,8 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(market_report(close)['latest_coverage'], 0)
 
     def test_budget_caps_exposure_and_existing_heat(self):
-        self.assertEqual(plan_quantity(100000, 1, 100, 95, 4900, 95000)['quantity'], 20)
-        self.assertEqual(plan_quantity(100000, 1, 100, 95, 5000, 0)['quantity'], 0)
+        self.assertEqual(plan_quantity(100000, 1, 100, 95, 4900, 95000, target=112, atr_candles=(pd.Series([101.0]*15), pd.Series([99.0]*15), pd.Series([100.0]*15)), liquidity_candles=(pd.Series([100.0]*20), pd.Series([600000.0]*20)), earnings_within_five_days=False)['quantity'], 20)
+        self.assertEqual(plan_quantity(100000, 1, 100, 95, 5000, 0, target=112, atr_candles=(pd.Series([101.0]*15), pd.Series([99.0]*15), pd.Series([100.0]*15)), liquidity_candles=(pd.Series([100.0]*20), pd.Series([600000.0]*20)), earnings_within_five_days=False)['quantity'], 0)
         with self.assertRaises(ValueError):
             plan_quantity(100000, 1, 100, 101, 0, 0)
 
