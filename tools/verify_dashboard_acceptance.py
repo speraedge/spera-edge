@@ -43,7 +43,7 @@ def check() -> dict:
         failures.append(f"Expected five ordered sidebar pages, got {pages!r}")
     # Each page must be conditional, not executed eagerly as a tab body.
     branches = []
-    for node in ast.walk(tree):
+    for node in tree.body:
         if isinstance(node, ast.If):
             current = node
             while isinstance(current, ast.If):
