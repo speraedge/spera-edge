@@ -591,6 +591,14 @@ def render_private_portfolio(close, snapshot_usable):
             st.session_state['edge_event_id'] = str(uuid.uuid4())
         loaded_plan = st.session_state.get('saved_plan_selected')
         if loaded_plan:
+            # A cached UI selection is not authorization: re-check owner and ACTIVE state in D1.
+            from edge_core.saved_trade_plans import OwnerPlanStore
+            try:
+                loaded_plan = OwnerPlanStore(owner, query).load_active(loaded_plan['plan_id'])
+            except (ValueError, KeyError):
+                loaded_plan = None
+                st.session_state.pop('saved_plan_selected', None)
+        if loaded_plan:
             st.caption(f"Loaded plan: {loaded_plan['Symbol']} · pivot ₹{loaded_plan['Pivot']:.2f} · stop ₹{loaded_plan['Stop']:.2f}. Confirm all values against the actual fill before recording.")
         with st.form('private_edge_event'):
             kind = st.selectbox('Record type', ['BUY', 'SELL', 'STOP', 'NOTE'])
