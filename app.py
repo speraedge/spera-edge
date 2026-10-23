@@ -17,6 +17,7 @@ import json
 import hashlib
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from edge_core.research_fallback import load_leadership
 from edge_core.snapshot_integrity import validate_snapshot
 from edge_core.ohlcv_integrity import snapshot_is_fresh
 from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report
@@ -75,9 +76,9 @@ if edge_meta:
         age=(now_ist.date()-last_session).days
         snapshot_usable=snapshot_is_fresh(last_session, now_ist)
         if not snapshot_usable:
-            st.info(f"Note: Displaying data from {last_session.isoformat()}. Research only. Execution forms are locked.")
+            st.info(f"Note: Displaying research data from {last_session.isoformat()}. Execution forms are locked until fresh price data is available.")
     except (ValueError,TypeError,KeyError):
-        st.info(f"Note: Displaying data from {edge_meta.get('last_session', 'unknown session')}. Research only. Execution forms are locked.")
+        st.info(f"Note: Displaying research data from {edge_meta.get('last_session', 'unknown session')}. Execution forms are locked until fresh price data is available.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
@@ -193,7 +194,11 @@ if page == "Market Pulse":
 elif page == "Leadership Scanner":
     st.subheader("Leadership Scanner")
     st.caption("Automatically published research ranks are not certified trading signals.")
-    ranks = snapshot_table("leadership") if edge_meta else None
+    ranks, leadership_date, leadership_historical = load_leadership(
+        SNAPSHOT_DIR, Path(__file__).parent / "data" / "history",
+        latest_date=edge_meta.get("last_session") if edge_meta else None)
+    if ranks is not None:
+        st.info(f"Leadership research as of {leadership_date}" + (" (historical archive; not current trading signals)" if leadership_historical else ""))
 
     if ranks is not None:
         try:
@@ -419,6 +424,15 @@ elif page == "Trade Desk":
                 st.rerun()
         except (ValueError, KeyError, TypeError, RuntimeError) as exc:
             st.warning(f"Saved plans unavailable: {exc}")
+    trade_ranks, trade_rank_date, trade_historical = load_leadership(
+        SNAPSHOT_DIR, Path(__file__).parent / "data" / "history",
+        latest_date=edge_meta.get("last_session") if edge_meta else None)
+    if trade_ranks is not None:
+        st.info(f"Momentum / RS research from {trade_rank_date}" + (" (historical fallback)" if trade_historical else ""))
+        rank_cols = [c for c in ("Symbol", "Percentile", "Pure_Momentum_Rank", "Data_Quality", "Ret_6M", "Ret_12M") if c in trade_ranks.columns]
+        st.dataframe(trade_ranks[rank_cols].sort_values("Pure_Momentum_Rank", na_position="last").head(50), use_container_width=True, hide_index=True)
+    else:
+        st.info("Leadership / RS research unavailable: no validated latest or historical archive.")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
     with st.container():
         st.caption("Automatic daily OHLCV snapshot; minimum 253 aligned sessions.")
