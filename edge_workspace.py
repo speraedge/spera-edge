@@ -364,8 +364,16 @@ def render_entries(close, high, low, volume, last_session):
         st.error('RS hard filter unavailable: valid percentile column required')
         return table.iloc[0:0]
     eligible_rs = set(ranks.loc[pd.to_numeric(ranks['RS_Universe_252D_Pctile'], errors='coerce').ge(70), 'Symbol'])
-    table = table.loc[table['Symbol'].isin(eligible_rs)].copy()
-    st.caption('Hard research candidate filter: NIFTY 500 RS percentile ≥70. Missing RS is excluded.')
+    from edge_core.indian_risk_gates import average_traded_value20, MIN_ADTV_RUPEES
+    liquid_symbols = set()
+    for sym in table['Symbol']:
+        try:
+            if average_traded_value20(close[sym], volume[sym]) >= MIN_ADTV_RUPEES:
+                liquid_symbols.add(sym)
+        except (KeyError, ValueError):
+            pass
+    table = table.loc[table['Symbol'].isin(eligible_rs & liquid_symbols)].copy()
+    st.caption('Hard research filters: NIFTY 500 RS percentile ≥70 and 20-day average traded value ≥₹5 crore. Missing evidence is excluded.')
     st.dataframe(numbered(table), use_container_width=True)
     export_section('Entry diagnostics', table, 'entry_diagnostics')
     eligible = table.loc[table['Evidence'].eq('COMPLETED_SESSION_RESEARCH')]
@@ -384,12 +392,26 @@ def render_entries(close, high, low, volume, last_session):
     exposure = st.number_input('Planning current exposure (INR)', min_value=0.0, value=0.0)
     entry = st.number_input('Planned entry price', min_value=0.01, value=100.0)
     stop = st.number_input('Planned protective stop', min_value=0.01, value=95.0)
-    target = st.number_input('Optional planned target (0 = no target)', min_value=0.0, value=0.0)
+    target = st.number_input('Planned target price (required for net 2:1)', min_value=0.0, value=0.0)
+    earnings_near = st.checkbox('Earnings within 5 days?', value=True,
+                                help='Checked or unknown blocks sizing because of gap risk.')
+    st.caption('Select a symbol to use observed OHLCV for ATR(14) and 20-day traded value.')
+    chosen = st.selectbox('Sizing candidate', [''] + eligible['Symbol'].astype(str).tolist()) if not eligible.empty else ''
+    atr_candles = liquidity_candles = None
+    if chosen and chosen in close.columns:
+        atr_candles = (high[chosen], low[chosen], close[chosen])
+        liquidity_candles = (close[chosen], volume[chosen])
+        from edge_core.indian_risk_gates import atr_stop, average_traded_value20
+        try:
+            st.caption(f"Required ATR-based stop: ₹{atr_stop(entry, *atr_candles):.2f}; "
+                       f"20-day average traded value: ₹{average_traded_value20(*liquidity_candles):,.0f}")
+        except ValueError as exc:
+            st.warning(str(exc))
     try:
         if defensive:
             st.info('Sizing unavailable while market breadth is DEFENSIVE.')
         else:
-            st.write(plan_quantity(equity, risk, entry, stop, committed, exposure, target=target if target > 0 else None))
+            st.write(plan_quantity(equity, risk, entry, stop, committed, exposure, target=target if target > 0 else None, atr_candles=atr_candles, liquidity_candles=liquidity_candles, earnings_within_five_days=earnings_near))
         st.caption('Caps: 5% aggregate open risk, 100% total exposure, 10% per new position. All values are planning assumptions; verify fills and available cash independently.')
     except ValueError as exc:
         st.error(str(exc))
