@@ -35,6 +35,30 @@ class CandlestickChartTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.render()
 
+    def test_bad_date_in_open_csv_fails_gracefully(self):
+        from io import StringIO
+        csv = self.open_.reset_index().rename(columns={"index": "Date"}).to_csv(index=False)
+        csv += "not-a-date,101.0\\n"
+        bad = pd.read_csv(StringIO(csv), index_col="Date")
+        with self.assertRaisesRegex(ValueError, "Chart unavailable: invalid dates in Open"):
+            render_validated_ohlcv_png(bad, self.high, self.low, self.close,
+                                       self.volume, "AAA")
+
+    def test_mixed_index_types_are_coerced_before_alignment(self):
+        open_string = self.open_.copy()
+        open_string.index = open_string.index.strftime("%Y-%m-%d")
+        raw = render_validated_ohlcv_png(open_string, self.high, self.low,
+                                         self.close, self.volume, "AAA")
+        self.assertTrue(raw.startswith(bytes.fromhex("89504e470d0a1a0a")))
+
+    def test_mismatched_dates_use_intersection_not_union(self):
+        extra = self.open_.iloc[:1].copy()
+        extra.index = pd.DatetimeIndex(["2024-12-31"])
+        open_extra = pd.concat([extra, self.open_])
+        raw = render_validated_ohlcv_png(open_extra, self.high, self.low,
+                                         self.close, self.volume, "AAA")
+        self.assertTrue(raw.startswith(bytes.fromhex("89504e470d0a1a0a")))
+
     def test_rejects_missing_history(self):
         with self.assertRaises(ValueError):
             self.render(bars=60)
