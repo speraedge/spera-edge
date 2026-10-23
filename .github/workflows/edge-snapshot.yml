@@ -91,6 +91,14 @@ jobs:
             echo "Could not publish snapshot after five safe attempts."
             exit 1
           fi
+      - name: Archive Phase 2 opening-price diagnostics even on validation failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2-open-diagnostic
+          path: data/phase2-open-diagnostic/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Archive published research evidence
         if: always()
         uses: actions/upload-artifact@v4
