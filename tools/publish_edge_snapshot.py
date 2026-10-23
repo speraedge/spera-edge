@@ -40,7 +40,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     mapping_ok=mapping.loc[mapping["Mapping_Status"].eq("MAPPED")]
     end=date.today()
     start=end-timedelta(days=490)
-    fields={name:{} for name in ("close","high","low","volume")}
+    fields={name:{} for name in ("open","close","high","low","volume")}
     failures=[]
     successful=0
     for row in mapping_ok.itertuples(index=False):
@@ -102,13 +102,35 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         "certified":False,"breadth":breadth
     }
     (staging/"metadata.json").write_text(json.dumps(metadata,indent=2))
+    # Keep raw provider OHLCV available for diagnostics if validation fails.
+    # This directory is diagnostic-only; never publish it to the trusted snapshot.
+    diagnostic = destination.parent / "phase2-open-diagnostic"
+    diagnostic.mkdir(parents=True, exist_ok=True)
+    for name in ("open.csv", "close.csv", "metadata.json"):
+        shutil.copy2(staging / name, diagnostic / name)
+    opened = matrices["open"].tail(253)
+    closed = matrices["close"].tail(253)
+    missing_open = closed.notna() & opened.isna()
+    missing_close = opened.notna() & closed.isna()
+    rows = []
+    for direction, mask in (("close_without_open", missing_open), ("open_without_close", missing_close)):
+        for session, symbol in zip(*__import__("numpy").where(mask.to_numpy())):
+            rows.append({"direction": direction, "session": str(mask.index[session]),
+                         "symbol": str(mask.columns[symbol]),
+                         "open": opened.iat[session, symbol], "close": closed.iat[session, symbol]})
+    pd.DataFrame(rows, columns=["direction", "session", "symbol", "open", "close"]).to_csv(
+        diagnostic / "open_close_mismatches.csv", index=False)
+    print("PHASE2_OPEN_DIAGNOSTIC:", json.dumps({
+        "close_without_open": int(missing_open.to_numpy().sum()),
+        "open_without_close": int(missing_close.to_numpy().sum()),
+        "sample": rows[:20]}, default=str))
     try:
         validate_snapshot(staging)
         latest = pd.Timestamp(metadata["last_session"]).date()
         if (end - latest).days > 5:
             raise RuntimeError("Provider snapshot stale; preserving last-known-good")
         destination.mkdir(parents=True,exist_ok=True)
-        for name in ("leadership.csv","close.csv","high.csv","low.csv","volume.csv"):
+        for name in ("leadership.csv","open.csv","close.csv","high.csv","low.csv","volume.csv"):
             os.replace(staging/name,destination/name)
         os.replace(staging/"metadata.json",destination/"metadata.json")
     finally:
