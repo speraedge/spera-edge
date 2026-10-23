@@ -68,3 +68,20 @@ def trailing_stop_reminder(entry, initial_stop, latest_price, *, side="LONG"):
     if not all(map(math.isfinite, values)) or not 0 < initial_stop < entry:
         return False
     return latest_price >= entry + 2*(entry-initial_stop)
+
+
+def original_r_reminders(events, marks):
+    """Calculate 2R per symbol from first BUY event, never current trailing stop.
+
+    Events must be the authenticated owner's chronological ledger events.
+    A missing or invalid original BUY fails closed (False).
+    """
+    first_buys = {}
+    for event in events:
+        if event.get("kind") == "BUY":
+            first_buys.setdefault(event["symbol"], event)
+    return {
+        symbol: trailing_stop_reminder(first["price"], first["stop"], marks.get(symbol))
+        if marks.get(symbol) is not None else False
+        for symbol, first in first_buys.items()
+    }
