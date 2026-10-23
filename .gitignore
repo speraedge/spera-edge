@@ -9,3 +9,7 @@ __pycache__/
 venv/
 *.sqlite
 *.db
+
+# Phase 2 generated snapshot charts: never commit binary output
+artifacts/charts/
+data/charts/

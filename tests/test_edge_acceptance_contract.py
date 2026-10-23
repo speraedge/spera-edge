@@ -28,8 +28,12 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         )
         offsets = [workflow.index(step) for step in steps]
         self.assertEqual(offsets, sorted(offsets))
-        self.assertIn("30 3 * * 2-6", workflow)
+        self.assertNotIn("30 3 * * 2-6", workflow)
         self.assertIn("30 14 * * 1-5", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("for attempt in 1 2; do", workflow)
+        self.assertIn("sleep 1800", workflow)
+        self.assertIn("STALE_PROVIDER_SNAPSHOT", workflow)
         self.assertNotIn("30 1,2,3 * * 2-6", workflow)
         self.assertNotIn("- cron: '0 14 * * 1-5'", workflow)
         freshness = "Enforce latest completed NSE session before live publication"

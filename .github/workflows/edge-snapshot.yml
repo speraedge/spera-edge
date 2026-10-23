@@ -2,10 +2,8 @@ name: NIFTY 500 automatic research snapshot
 on:
   workflow_dispatch:
   schedule:
-    # 20:00 IST Monday-Friday: attempt same-day EOD publication.
+    # 20:00 IST Monday-Friday: single scheduled EOD attempt, one stale-only retry.
     - cron: '30 14 * * 1-5'
-    # 09:00 IST Tuesday-Saturday: catch up after delayed provider updates.
-    - cron: '30 3 * * 2-6'
 permissions:
   contents: write
 concurrency:
@@ -23,10 +21,47 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - name: Build isolated NIFTY 500 snapshot
+      - name: Build isolated NIFTY 500 snapshot (retry stale provider only)
+        shell: bash
         env:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
-        run: python -m tools.publish_edge_snapshot
+        run: |
+          set -uo pipefail
+          for attempt in 1 2; do
+            echo "Snapshot attempt $attempt/2"
+            log_file="$(mktemp)"
+            # Retry both build-time and post-build freshness failures.
+            if (python -m tools.publish_edge_snapshot && python - <<'PY'
+          import json
+          from datetime import datetime
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+          from edge_core.ohlcv_integrity import snapshot_is_fresh
+          meta = json.loads(Path("data/latest/metadata.json").read_text())
+          if not snapshot_is_fresh(meta["last_session"], datetime.now(ZoneInfo("Asia/Kolkata"))):
+              raise SystemExit("STALE_PROVIDER_SNAPSHOT: provider has not published latest completed session")
+          print("FRESH_PROVIDER_SNAPSHOT:", meta["last_session"])
+          PY
+            ) >"$log_file" 2>&1; then
+              cat "$log_file"
+              rm -f "$log_file"
+              echo "Fresh snapshot obtained on attempt $attempt"
+              break
+            fi
+            cat "$log_file"
+            if ! grep -q 'STALE_PROVIDER_SNAPSHOT' "$log_file"; then
+              rm -f "$log_file"
+              echo "NON_STALE_SNAPSHOT_FAILURE: not retrying authentication, network, or validation errors"
+              exit 1
+            fi
+            rm -f "$log_file"
+            if [ "$attempt" -eq 2 ]; then
+              echo "STALE_PROVIDER_SNAPSHOT: exhausted two attempts; no publication"
+              exit 1
+            fi
+            echo "STALE_PROVIDER_SNAPSHOT: waiting 30 minutes before single retry"
+            sleep 1800
+          done
       - name: Validate complete snapshot files and metadata
         run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
       - name: Enforce latest completed NSE session before live publication
@@ -49,6 +84,15 @@ jobs:
         run: python -m edge_evidence
       - name: Validate published membership and benchmark evidence
         run: python -m unittest discover -s tests -p 'test_published_evidence.py' -v
+      - name: Refresh verified BSE scrip mapping (weekly, fail closed on unavailable source)
+        run: |
+          if [ "$(date -u +%u)" = "6" ] || [ ! -s data/latest/bse_mapping.csv ]; then
+            python -m tools.build_bse_mapping || echo 'BSE_MAPPING_UNAVAILABLE: retaining previously verified mapping, no inferred codes'
+          fi
+      - name: Fetch public exchange fundamentals (no private D1 reads)
+        run: python -m edge_fundamentals
+      - name: Fail-closed public fundamentals privacy gate
+        run: python -c "from edge_core.fundamentals_privacy import validate_public_csv; validate_public_csv('data/latest/fundamentals_auto.csv')"
       - name: Publish validated leadership research to EDGE D1
         env:
           EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
@@ -63,17 +107,27 @@ jobs:
         run: python -m tools.edge_snapshot_publication --directory data/latest --publish
       - name: Publish non-secret research snapshot to EDGE repository
         run: |
+          target_branch="${GITHUB_REF_NAME}"
+          if [ -z "$target_branch" ] || [ "$target_branch" = "HEAD" ]; then
+            echo "UNSAFE_OR_MISSING_BRANCH_REF"; exit 1
+          fi
+          echo "Publishing snapshot only to triggering branch: $target_branch"
           git config user.name "spera-edge-bot"
           git config user.email "spera-edge-bot@users.noreply.github.com"
           # Keep the freshly generated snapshot while rebasing onto concurrent code changes.
           # Never force-push or overwrite unrelated commits.
+          # Fail closed if actual opening prices are absent or excluded from Git.
+          test -s data/latest/open.csv || { echo "MISSING_OPEN_CSV"; exit 1; }
+          git add -f data/latest/open.csv
+          python -c "from edge_core.fundamentals_privacy import validate_public_csv; validate_public_csv('data/latest/fundamentals_auto.csv')"
           git add data/latest
+          git ls-files --error-unmatch data/latest/open.csv
           if ! git diff --cached --quiet; then
             git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
             for attempt in 1 2 3 4 5; do
-              git fetch origin main
-              if git rebase origin/main; then
-                if git push origin HEAD:main; then
+              git fetch origin "$target_branch"
+              if git rebase "origin/$target_branch"; then
+                if git push origin "HEAD:$target_branch"; then
                   exit 0
                 fi
               else
@@ -87,6 +141,14 @@ jobs:
             echo "Could not publish snapshot after five safe attempts."
             exit 1
           fi
+      - name: Archive Phase 2 opening-price diagnostics even on validation failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase2-open-diagnostic
+          path: data/phase2-open-diagnostic/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Archive published research evidence
         if: always()
         uses: actions/upload-artifact@v4
