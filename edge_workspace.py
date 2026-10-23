@@ -551,18 +551,12 @@ def render_private_portfolio(close, snapshot_usable):
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
-        from edge_core.indian_risk_gates import trailing_stop_reminder
+        from edge_core.indian_risk_gates import original_r_reminders
         positions = positions.copy()
-        # Original 1R is immutable: use the first recorded BUY, never the moved stop.
-        first_buys = {}
-        for event in events:
-            if event.get('kind') == 'BUY':
-                first_buys.setdefault(event['symbol'], event)
-        def original_r_reminder(row):
-            first = first_buys.get(row['Symbol'])
-            return bool(first and pd.notna(row['Mark']) and
-                        trailing_stop_reminder(first['price'], first['stop'], row['Mark']))
-        positions['2R_Journal_Reminder'] = positions.apply(original_r_reminder, axis=1)
+        # Only the authenticated owner's chronological first BUY fixes original 1R.
+        reminder_by_symbol = original_r_reminders(events, marks)
+        positions['2R_Journal_Reminder'] = positions['Symbol'].map(
+            reminder_by_symbol).fillna(False).astype(bool)
         st.caption('Green rows: mark has reached at least 2R from the first BUY entry and its original initial stop. Journal reminder only; no automatic exit.')
         def _reminder_style(row):
             return ['background-color: #d8f3dc' if row['2R_Journal_Reminder'] else '' for _ in row]
