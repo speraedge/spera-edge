@@ -1,4 +1,4 @@
-"""Read-only source-contract audit for SPERA EDGE's five-tab application.
+"""Read-only source-contract audit for SPERA EDGE's five-page application.
 
 This is a static integration preflight, NOT a live Streamlit, D1 or trading
 certification. Run from repository root:
@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TABS = [
+EXPECTED_PAGES = [
     "Market Pulse",
     "Leadership Scanner",
     "Trade Desk",
@@ -26,21 +26,35 @@ def check() -> dict:
     source = app_path.read_text(encoding="utf-8")
     tree = ast.parse(source, filename=str(app_path))
 
-    tabs = []
+    pages = []
+    sidebar_radio_found = False
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        if not isinstance(node.func, ast.Attribute) or node.func.attr != "tabs":
-            continue
-        if not isinstance(node.func.value, ast.Name) or node.func.value.id != "st":
-            continue
-        if node.args and isinstance(node.args[0], (ast.List, ast.Tuple)):
-            tabs.extend(
-                element.value for element in node.args[0].elts
-                if isinstance(element, ast.Constant) and isinstance(element.value, str)
-            )
-    if tabs != EXPECTED_TABS:
-        failures.append(f"Expected five ordered tabs, got {tabs!r}")
+        func = node.func
+        if (isinstance(func, ast.Attribute) and func.attr == "radio"
+            and isinstance(func.value, ast.Attribute) and func.value.attr == "sidebar"
+            and isinstance(func.value.value, ast.Name) and func.value.value.id == "st"):
+            sidebar_radio_found = True
+            if len(node.args) >= 2 and isinstance(node.args[1], (ast.List, ast.Tuple)):
+                pages = [item.value for item in node.args[1].elts
+                         if isinstance(item, ast.Constant) and isinstance(item.value, str)]
+    if not sidebar_radio_found or pages != EXPECTED_PAGES:
+        failures.append(f"Expected five ordered sidebar pages, got {pages!r}")
+    # Each page must be conditional, not executed eagerly as a tab body.
+    branches = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If):
+            current = node
+            while isinstance(current, ast.If):
+                test = current.test
+                if (isinstance(test, ast.Compare) and isinstance(test.left, ast.Name)
+                    and test.left.id == "page" and len(test.comparators) == 1
+                    and isinstance(test.comparators[0], ast.Constant)):
+                    branches.append(test.comparators[0].value)
+                current = current.orelse[0] if len(current.orelse) == 1 else None
+    if branches != EXPECTED_PAGES:
+        failures.append(f"Expected conditional page branches, got {branches!r}")
 
     required_imports = {
         "edge_core.momentum_v1": "apply_frozen_v1_scores",
@@ -80,8 +94,8 @@ def check() -> dict:
 
     return {
         "status": "PASS" if not failures else "FAIL",
-        "audit": "static_five_tab_source_preflight",
-        "tabs": tabs,
+        "audit": "static_five_page_source_preflight",
+        "pages": pages,
         "failures": failures,
         "live_verified": False,
         "certified": False,
