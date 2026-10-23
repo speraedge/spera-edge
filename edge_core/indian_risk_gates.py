@@ -62,26 +62,31 @@ def require_earnings_clear(earnings_within_five_days):
 
 
 def trailing_stop_reminder(entry, initial_stop, latest_price, *, side="LONG"):
+    """2R reminder using immutable original entry/stop, never trailing stop.
+
+    Return INSUFFICIENT_HISTORY if the original risk cannot be established.
+    """
     if side != "LONG":
-        return False
-    values = [float(v) for v in (entry, initial_stop, latest_price)]
-    if not all(map(math.isfinite, values)) or not 0 < initial_stop < entry:
-        return False
-    return latest_price >= entry + 2*(entry-initial_stop)
+        return "INSUFFICIENT_HISTORY"
+    try:
+        entry, initial_stop, latest_price = (
+            float(entry), float(initial_stop), float(latest_price))
+    except (TypeError, ValueError, OverflowError):
+        return "INSUFFICIENT_HISTORY"
+    if (not all(map(math.isfinite, (entry, initial_stop, latest_price)))
+            or not 0 < initial_stop < entry or latest_price <= 0):
+        return "INSUFFICIENT_HISTORY"
+    return bool(latest_price >= entry + 2 * (entry - initial_stop))
 
 
 def original_r_reminders(events, marks):
-    """Calculate 2R per symbol from first BUY event, never current trailing stop.
-
-    Events must be the authenticated owner's chronological ledger events.
-    A missing or invalid original BUY fails closed (False).
-    """
+    """Use the first BUY's original stop; never substitute STOP_UPDATE values."""
     first_buys = {}
     for event in events:
-        if event.get("kind") == "BUY":
-            first_buys.setdefault(event["symbol"], event)
+        if event.get("kind") == "BUY" and event.get("symbol") not in first_buys:
+            first_buys[event["symbol"]] = event
     return {
-        symbol: trailing_stop_reminder(first["price"], first["stop"], marks.get(symbol))
-        if marks.get(symbol) is not None else False
+        symbol: trailing_stop_reminder(
+            first.get("price"), first.get("stop"), marks.get(symbol))
         for symbol, first in first_buys.items()
     }
