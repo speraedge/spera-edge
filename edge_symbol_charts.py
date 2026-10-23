@@ -10,28 +10,6 @@ from io import BytesIO
 import pandas as pd
 
 
-def render_symbol_png(close, high, low, volume, symbol, pivot=None, stop=None, bars=260):
-    import mplfinance as mpf
-    if not isinstance(symbol, str) or not symbol or symbol not in close.columns:
-        raise ValueError("Symbol missing from validated OHLCV snapshot")
-    if not 60 <= int(bars) <= 500:
-        raise ValueError("Chart window must be 60–500 sessions")
-    series = {}
-    for name, frame in (("Close", close), ("High", high), ("Low", low), ("Volume", volume)):
-        if symbol not in frame:
-            raise ValueError("Missing symbol in " + name)
-        series[name] = pd.to_numeric(frame[symbol], errors="coerce")
-    data = pd.DataFrame(series).dropna().sort_index().tail(int(bars))
-    if len(data) < 50 or not isinstance(data.index, pd.DatetimeIndex):
-        raise ValueError("Insufficient aligned chart history")
-    if ((data["High"] < data[["Low", "Close"]].max(axis=1)) |
-        (data["Low"] > data["Close"]) | (data["Volume"] < 0)).any():
-        raise ValueError("Invalid OHLCV candles")
-    # Open is not supplied by the legacy snapshot reader: load the actual
-    # validated open.csv separately; never synthesize an opening price.
-    raise ValueError("Actual validated open prices required for candlesticks")
-
-
 def render_validated_ohlcv_png(open_, high, low, close, volume, symbol, bars=260,
                               pivot=None, stop=None):
     import mplfinance as mpf
