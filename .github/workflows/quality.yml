@@ -13,7 +13,8 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python -m compileall -q app.py edge_workspace.py edge_evidence.py edge_core tests tools
       - run: python -m unittest discover -s tests -v
-      - run: PYTHONPATH=. python tools/verify_saved_ohlcv_replay.py
+      - name: Mandatory saved OHLCV replay regression (fail closed)
+        run: PYTHONPATH=. python tools/verify_saved_ohlcv_replay.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
