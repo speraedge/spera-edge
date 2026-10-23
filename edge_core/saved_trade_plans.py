@@ -1,13 +1,8 @@
 """Local research-only saved trade plans. Not a durable multi-user ledger."""
-import json
 import math
-import os
 import re
-import tempfile
 from datetime import date
-from pathlib import Path
 
-PLAN_FILE = Path(__file__).resolve().parents[1] / "data" / "latest" / "saved_plans.json"
 
 
 def validate_plan(symbol, pivot, stop, target, setup_date):
@@ -24,41 +19,6 @@ def validate_plan(symbol, pivot, stop, target, setup_date):
     return {"Symbol": symbol, "Setup Date": session, "Pivot": pivot, "Stop": stop, "Target": target}
 
 
-def load_plans(path=PLAN_FILE):
-    path = Path(path)
-    if not path.exists():
-        return []
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, list) or len(raw) > 1000:
-        raise ValueError("Invalid saved plans file")
-    return [validate_plan(x["Symbol"], x["Pivot"], x["Stop"], x["Target"], x["Setup Date"]) for x in raw]
-
-
-def save_plans(plans, path=PLAN_FILE):
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Atomic replace avoids truncated files on interrupted writes.
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent,
-                                     prefix=".plans-", suffix=".tmp", delete=False) as f:
-        temp = Path(f.name)
-        json.dump(plans, f, indent=2, allow_nan=False)
-    try:
-        os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
-
-
-def add_plan(plan, path=PLAN_FILE):
-    checked = validate_plan(plan["Symbol"], plan["Pivot"], plan["Stop"],
-                            plan["Target"], plan["Setup Date"])
-    plans = load_plans(path)
-    if any(x["Symbol"] == checked["Symbol"] and x["Setup Date"] == checked["Setup Date"] for x in plans):
-        raise ValueError("Plan already saved for this symbol and date")
-    plans.append(checked)
-    save_plans(plans, path)
-    return checked
-
-
 def status(plan, price):
     try:
         current = float(price)
@@ -66,23 +26,80 @@ def status(plan, price):
         return "NO_PRICE"
     if not math.isfinite(current) or current <= 0:
         return "NO_PRICE"
-    pivot, stop = plan["Pivot"], plan["Stop"]
-    if current < stop:
+    if current < plan["Stop"]:
         return "INVALID"
-    if current > pivot * 1.05:
+    if current > plan["Pivot"] * 1.05:
         return "EXTENDED"
-    if current > pivot * 1.01:
+    if current > plan["Pivot"] * 1.01:
         return "TRIGGERED"
     return "WAITING"
 
 
 def evaluate_plans(plans, prices):
-    rows, active = [], []
+    rows = []
     for plan in plans:
         current = prices.get(plan["Symbol"])
         state = status(plan, current)
-        if state == "INVALID":
-            continue
-        active.append(plan)
-        rows.append(dict(plan, **{"Current Price": current, "Status": state}))
-    return rows, active
+        if state != "INVALID":
+            rows.append(dict(plan, **{"Current Price": current, "Status": state}))
+    return rows
+
+
+class OwnerPlanStore:
+    """All D1 access requires an authenticated, allowlisted owner and parameterized owner filter."""
+    def __init__(self, owner, query):
+        if not isinstance(owner, str) or not owner.strip() or not callable(query):
+            raise ValueError("Authenticated owner and D1 query required")
+        self.owner, self.query = owner, query
+
+    def initialize(self):
+        self.query("""CREATE TABLE IF NOT EXISTS edge_saved_plans (
+            owner_id TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            setup_date TEXT NOT NULL,
+            pivot REAL NOT NULL,
+            stop REAL NOT NULL,
+            target REAL NOT NULL,
+            status TEXT NOT NULL DEFAULT 'ACTIVE',
+            created_utc TEXT NOT NULL,
+            invalidated_utc TEXT,
+            PRIMARY KEY (owner_id, plan_id),
+            CHECK (stop > 0 AND stop < pivot AND pivot < target),
+            CHECK (status IN ('ACTIVE', 'INVALID'))
+        )""")
+
+    def list_active(self):
+        records = self.query(
+            "SELECT plan_id, symbol, setup_date, pivot, stop, target FROM edge_saved_plans WHERE owner_id=? AND status='ACTIVE' ORDER BY setup_date DESC, plan_id",
+            (self.owner,))
+        return [dict(validate_plan(r["symbol"], r["pivot"], r["stop"], r["target"], r["setup_date"]),
+                     plan_id=r["plan_id"]) for r in records]
+
+    def add(self, plan):
+        from uuid import uuid4
+        from datetime import datetime, timezone
+        checked = validate_plan(plan["Symbol"], plan["Pivot"], plan["Stop"], plan["Target"], plan["Setup Date"])
+        plan_id = str(uuid4())
+        self.query("""INSERT INTO edge_saved_plans
+            (owner_id, plan_id, symbol, setup_date, pivot, stop, target, status, created_utc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', ?)""",
+            (self.owner, plan_id, checked["Symbol"], checked["Setup Date"], checked["Pivot"],
+             checked["Stop"], checked["Target"], datetime.now(timezone.utc).isoformat()))
+        return plan_id
+
+    def invalidate(self, plan_id):
+        from datetime import datetime, timezone
+        self.query("""UPDATE edge_saved_plans SET status='INVALID', invalidated_utc=?
+            WHERE owner_id=? AND plan_id=? AND status='ACTIVE'""",
+            (datetime.now(timezone.utc).isoformat(), self.owner, plan_id))
+
+    def load_active(self, plan_id):
+        records = self.query("""SELECT plan_id, symbol, setup_date, pivot, stop, target
+            FROM edge_saved_plans WHERE owner_id=? AND plan_id=? AND status='ACTIVE'""",
+            (self.owner, plan_id))
+        if len(records) != 1:
+            raise ValueError("Plan not found for authorized owner")
+        r = records[0]
+        return dict(validate_plan(r["symbol"], r["pivot"], r["stop"], r["target"], r["setup_date"]),
+                    plan_id=r["plan_id"])
