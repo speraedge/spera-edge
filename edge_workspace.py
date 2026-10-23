@@ -78,7 +78,7 @@ def entry_diagnostics(close, high, low, volume, as_of):
     return pd.DataFrame(records)
 
 
-def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10, *, target=None, symbol=None, positions=None, membership=None):
+def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10, *, target=None, symbol=None, positions=None, membership=None, atr_candles=None, earnings_within_five_days=None, liquidity_candles=None, roundtrip_cost_pct=0.006):
     values = (exposure, exposure_pct, single_pct)
     if not all(math.isfinite(float(value)) for value in values) or exposure < 0 or not 0 < exposure_pct <= 100 or not 0 < single_pct <= 100:
         raise ValueError('Invalid exposure limits')
@@ -86,8 +86,19 @@ def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_
         raise ValueError('Invalid entry or stop')
     if (entry - stop) / entry > 0.08:
         raise ValueError('SPERA policy: maximum initial stop distance is 8%')
-    if target is not None and (not math.isfinite(float(target)) or (target - entry) / (entry - stop) < 2):
-        raise ValueError('Planned target must provide at least 2:1 reward-to-risk')
+    from edge_core.indian_risk_gates import (atr_stop, require_earnings_clear, require_liquidity, net_reward_risk)
+    require_earnings_clear(earnings_within_five_days)
+    if atr_candles is None or liquidity_candles is None:
+        raise ValueError('ATR and liquidity evidence required')
+    computed_stop = atr_stop(entry, *atr_candles)
+    if abs(float(stop) - computed_stop) > max(0.01, entry * 0.0001):
+        raise ValueError('Initial stop must match 2.5x ATR')
+    require_liquidity(*liquidity_candles)
+    if target is None:
+        raise ValueError('Target required for net reward-to-risk validation')
+    rr = net_reward_risk(entry, stop, target, 1, roundtrip_cost_pct=roundtrip_cost_pct)
+    if rr['net_rr'] < 2:
+        raise ValueError('Net reward-to-risk must be at least 2:1')
     sizing = position_size(equity, risk_pct, entry, stop)
     budget = risk_budget(equity, risk_pct, committed_risk, heat_pct)
     notional_capacity = max(0, min(equity * exposure_pct / 100 - exposure, equity * single_pct / 100))
