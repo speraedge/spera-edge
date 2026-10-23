@@ -78,14 +78,38 @@ def entry_diagnostics(close, high, low, volume, as_of):
     return pd.DataFrame(records)
 
 
-def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10):
+def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10, *, target=None, symbol=None, positions=None, membership=None):
     values = (exposure, exposure_pct, single_pct)
     if not all(math.isfinite(float(value)) for value in values) or exposure < 0 or not 0 < exposure_pct <= 100 or not 0 < single_pct <= 100:
         raise ValueError('Invalid exposure limits')
+    if not all(math.isfinite(float(v)) for v in (entry, stop)) or entry <= 0 or stop >= entry or stop <= 0:
+        raise ValueError('Invalid entry or stop')
+    if (entry - stop) / entry > 0.08:
+        raise ValueError('SPERA policy: maximum initial stop distance is 8%')
+    if target is not None and (not math.isfinite(float(target)) or (target - entry) / (entry - stop) < 2):
+        raise ValueError('Planned target must provide at least 2:1 reward-to-risk')
     sizing = position_size(equity, risk_pct, entry, stop)
     budget = risk_budget(equity, risk_pct, committed_risk, heat_pct)
     notional_capacity = max(0, min(equity * exposure_pct / 100 - exposure, equity * single_pct / 100))
     quantity = min(sizing['quantity'], math.floor(budget['new_trade_budget'] / sizing['risk_per_share']), math.floor(notional_capacity / entry))
+    if positions is not None or membership is not None or symbol is not None:
+        if positions is None or membership is None or not symbol:
+            raise ValueError('Industry cap requires actual ledger positions, official membership and symbol')
+        if not {'Symbol', 'Industry'}.issubset(membership.columns) or membership['Symbol'].duplicated().any():
+            raise ValueError('Invalid official industry membership')
+        industries = membership.set_index('Symbol')['Industry']
+        if symbol not in industries or pd.isna(industries[symbol]):
+            raise ValueError('Unknown industry for proposed trade')
+        industry = industries[symbol]
+        current = 0.0
+        for _, holding in positions.iterrows():
+            ticker = holding['Symbol']
+            if ticker not in industries or pd.isna(industries[ticker]) or pd.isna(holding['Exposure']):
+                raise ValueError('Cannot certify industry exposure from ledger')
+            if industries[ticker] == industry:
+                current += float(holding['Exposure'])
+        if current + quantity * entry > equity * 0.30 + 1e-8:
+            raise ValueError('SPERA policy: 30% industry concentration ceiling exceeded')
     return {'quantity': quantity, 'planned_risk': quantity * sizing['risk_per_share'], 'notional': quantity * entry,
             'available_risk': budget['available_risk'], 'notional_capacity': notional_capacity}
 
@@ -160,6 +184,16 @@ class Ledger:
         validate_revisions(rows)
         return [dict(json.loads(row['payload']), event_id=row['event_id'], revision=row['revision'], created_utc=row['created_utc']) for row in rows]
 
+    def validate_stop_update(self, kind, symbol, new_stop, events=None):
+        if kind not in ('BUY', 'STOP'):
+            return
+        if events is None:
+            events = self.events()
+        positions, _ = self._replay(events, {})
+        opened = positions.loc[positions['Symbol'].eq(str(symbol).strip().upper())]
+        if not opened.empty and float(new_stop) < float(opened.iloc[0]['Stop']):
+            raise ValueError('Stop widening prohibited: protective stop cannot be lowered')
+
     def append(self, kind, symbol, *, quantity=0, price=0, stop=0, fee=0, note='', event_id=None, expected_revision=None):
         events = self.events()
         event_id = event_id or str(uuid.uuid4())
@@ -172,6 +206,7 @@ class Ledger:
         revision = len(events)
         if expected_revision is not None and revision != expected_revision:
             raise ValueError('Ledger changed in another session; refresh before recording')
+        self.validate_stop_update(kind, payload['symbol'], stop, events)
         self._replay(events + [payload], {})
         rows = self.query('''INSERT INTO edge_trade_events(owner_id,event_id,revision,created_utc,payload)
             SELECT ?,?,?,?,? WHERE (SELECT COUNT(*) FROM edge_trade_events WHERE owner_id=?)=?
