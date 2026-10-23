@@ -13,7 +13,7 @@ class CanonicalSnapshotOhlcvTests(unittest.TestCase):
         pd.DataFrame({"Symbol": names, "Data_Quality": ["REVIEW"] * 500}).to_csv(
             root / "leadership.csv", index=False)
         dates = pd.bdate_range("2025-12-01", periods=220)
-        for name, value in (("close", 100.0), ("high", 102.0),
+        for name, value in (("open", 100.5), ("close", 100.0), ("high", 102.0),
                             ("low", 99.0), ("volume", 1000.0)):
             data = pd.DataFrame(value, index=dates, columns=names)
             if corrupt and name == "high":
