@@ -82,6 +82,10 @@ def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_
     values = (exposure, exposure_pct, single_pct)
     if not all(math.isfinite(float(value)) for value in values) or exposure < 0 or not 0 < exposure_pct <= 100 or not 0 < single_pct <= 100:
         raise ValueError('Invalid exposure limits')
+    if not all(math.isfinite(float(v)) for v in (entry, stop)) or entry <= 0 or stop <= 0 or stop >= entry:
+        raise ValueError('Invalid long entry or stop')
+    if (float(entry) - float(stop)) / float(entry) > 0.08:
+        raise ValueError('maximum initial stop distance exceeded (8%)')
     sizing = position_size(equity, risk_pct, entry, stop)
     budget = risk_budget(equity, risk_pct, committed_risk, heat_pct)
     notional_capacity = max(0, min(equity * exposure_pct / 100 - exposure, equity * single_pct / 100))
