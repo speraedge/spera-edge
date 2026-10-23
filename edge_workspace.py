@@ -540,6 +540,31 @@ def render_private_portfolio(close, snapshot_usable):
         marks = close.iloc[-1].to_dict() if snapshot_usable and close is not None else {}
         positions, summary = ledger.report(marks)
         st.write(summary)
+        st.subheader('Private journal analytics')
+        from edge_core.journal_analytics import (
+            INSUFFICIENT_HISTORY, equity_curve, max_drawdown, r_multiples, expectancy)
+        closed_lots, r_status = r_multiples(events)
+        if r_status == 'OK':
+            st.caption('Realized FIFO closed-lot R, net of recorded fees; original BUY stop fixes initial 1R. Open lots and inferred fills are excluded.')
+            st.dataframe(numbered(closed_lots), use_container_width=True)
+            st.bar_chart(closed_lots.set_index('Sell_Event_ID')['R_Multiple'])
+            export_section('Private closed-lot R multiples', closed_lots, 'private_closed_lot_r')
+            st.write({'realized_expectancy': expectancy(closed_lots)})
+        else:
+            st.info('R-multiple and expectancy: ' + INSUFFICIENT_HISTORY)
+        st.caption('Historical equity requires explicit starting cash, dated owner-only fills and observed daily marks for every open position. The latest OHLCV snapshot alone cannot establish past account equity.')
+        opening_cash = st.number_input('Verified opening cash (INR) for historical analytics', min_value=0.0, value=0.0, help='Enter actual starting cash; zero means unavailable.')
+        curve_status = INSUFFICIENT_HISTORY
+        curve = pd.DataFrame()
+        if opening_cash > 0 and snapshot_usable and close is not None and not close.empty:
+            curve, curve_status = equity_curve(events, close, initial_cash=opening_cash)
+        if curve_status == 'OK':
+            st.line_chart(curve[['Equity']])
+            st.write({'max_drawdown': max_drawdown(curve)})
+            st.dataframe(numbered(curve.reset_index()), use_container_width=True)
+            export_section('Private observed equity curve', curve.reset_index(), 'private_equity_curve')
+        else:
+            st.info('Equity curve and max drawdown: ' + INSUFFICIENT_HISTORY)
         from edge_core.indian_risk_gates import original_r_reminders
         positions = positions.copy()
         # Only the authenticated owner's chronological first BUY fixes original 1R.
