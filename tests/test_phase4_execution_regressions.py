@@ -2,7 +2,7 @@
 import unittest
 import pandas as pd
 from edge_workspace import plan_quantity
-from edge_core.indian_risk_gates import require_liquidity, trailing_stop_reminder
+from edge_core.indian_risk_gates import require_liquidity, trailing_stop_reminder, original_r_reminders
 
 
 class Phase4ExecutionGatesTests(unittest.TestCase):
@@ -39,6 +39,16 @@ class Phase4ExecutionGatesTests(unittest.TestCase):
         result = plan_quantity(**self.base)
         self.assertGreater(result["quantity"], 0)
         self.assertLessEqual(result["planned_risk"], 5000)
+
+    def test_ledger_first_buy_anchors_original_r_after_stop_move(self):
+        events = [
+            {"kind": "BUY", "symbol": "AAA", "price": 100, "stop": 95},
+            {"kind": "STOP_UPDATE", "symbol": "AAA", "stop": 100},
+            {"kind": "BUY", "symbol": "AAA", "price": 104, "stop": 103},
+        ]
+        self.assertEqual(original_r_reminders(events, {"AAA": 109})["AAA"], False)
+        self.assertEqual(original_r_reminders(events, {"AAA": 110})["AAA"], True)
+        self.assertEqual(original_r_reminders(events, {"AAA": 109, "BBB": 200}).get("BBB", False), False)
 
     def test_original_r_remains_unchanged_after_stop_moved(self):
         self.assertFalse(trailing_stop_reminder(100, 95, 109))
