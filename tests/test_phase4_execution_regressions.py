@@ -48,13 +48,17 @@ class Phase4ExecutionGatesTests(unittest.TestCase):
         ]
         self.assertEqual(original_r_reminders(events, {"AAA": 109})["AAA"], False)
         self.assertEqual(original_r_reminders(events, {"AAA": 110})["AAA"], True)
-        self.assertEqual(original_r_reminders(events, {"AAA": 109, "BBB": 200}).get("BBB", False), False)
+        self.assertNotIn("BBB", original_r_reminders(events, {"AAA": 109, "BBB": 200}))
+
+    def test_missing_original_r_is_explicitly_insufficient(self):
+        self.assertEqual(trailing_stop_reminder(None, 95, 110), "INSUFFICIENT_HISTORY")
+        self.assertEqual(original_r_reminders([{"kind": "BUY", "symbol": "AAA", "price": 100}], {"AAA": 110})["AAA"], "INSUFFICIENT_HISTORY")
 
     def test_original_r_remains_unchanged_after_stop_moved(self):
         self.assertFalse(trailing_stop_reminder(100, 95, 109))
         self.assertTrue(trailing_stop_reminder(100, 95, 110))
         # A breakeven trailing stop must not be substituted for the initial stop.
-        self.assertFalse(trailing_stop_reminder(100, 100, 110))
+        self.assertEqual(trailing_stop_reminder(100, 100, 110), "INSUFFICIENT_HISTORY")
 
 
 if __name__ == "__main__":
