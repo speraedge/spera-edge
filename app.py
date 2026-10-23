@@ -43,6 +43,12 @@ def cached_stage2_diagnostics(close):
         records.append({"Symbol": sym, "Price-template pass": res["eligible"], "Note": res["reason"]})
     return pd.DataFrame(records)
 
+@st.cache_data(show_spinner=False, ttl=3600, max_entries=100)
+def cached_symbol_chart(snapshot_identity, symbol, open_frame, high, low, close, volume, pivot=None, stop=None):
+    from edge_symbol_charts import render_validated_ohlcv_png
+    return render_validated_ohlcv_png(open_frame, high, low, close, volume, symbol,
+                                     pivot=pivot, stop=stop)
+
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
 st.caption("Independent NIFTY 500 research • Automatic snapshots when available • No brokerage execution")
@@ -329,6 +335,8 @@ elif page == "Leadership Scanner":
         export_section("Price template diagnostics", stage2_records, "price_template")
         st.caption("Stage 2 relative-strength requirement must be verified separately. Price-only pass is not full Stage 2 qualification.")
 elif page == "Trade Desk":
+    from edge_fundamentals_ui import render_fundamentals
+    render_fundamentals(SNAPSHOT_DIR)
     st.subheader("Trade Desk")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
     with st.container():
@@ -348,16 +356,31 @@ elif page == "Trade Desk":
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(close, volume, high, low)
-                ranks_rs = snapshot_table("leadership")
-                if ranks_rs is None or not {"Symbol", "RS_Universe_252D_Pctile"}.issubset(ranks_rs.columns) or ranks_rs["Symbol"].duplicated().any():
-                    st.error("RS ≥70 hard filter unavailable: leadership percentile data missing or invalid.")
-                    candidates = candidates.iloc[0:0]
-                else:
-                    passed_rs = set(ranks_rs.loc[pd.to_numeric(ranks_rs["RS_Universe_252D_Pctile"], errors="coerce").ge(70), "Symbol"])
-                    candidates = candidates.loc[candidates["Symbol"].isin(passed_rs)].copy()
-                st.caption("SPERA research hard filter: RS_Universe_252D_Pctile ≥70; missing scores excluded.")
                 st.dataframe(numbered(candidates), use_container_width=True)
                 export_section("VCP research candidates", candidates, "vcp_candidates")
+                with st.expander("Candlestick chart · saved OHLCV research", expanded=False):
+                    open_frame = snapshot_table("open")
+                    if open_frame is None:
+                        st.warning("Actual opening prices are not yet published. Candlestick charts unavailable.")
+                    else:
+                        symbols = sorted(set(close.columns) & set(high.columns) &
+                                         set(low.columns) & set(volume.columns) & set(open_frame.columns))
+                        selected = st.selectbox("Chart symbol", symbols, key="edge_chart_symbol")
+                        if selected:
+                            # Levels are sourced only from existing entry diagnostics.
+                            from edge_workspace import entry_diagnostics
+                            levels = entry_diagnostics(close, high, low, volume, edge_meta["last_session"])
+                            matched = levels.loc[levels["Symbol"].eq(selected)] if "Symbol" in levels else levels.iloc[0:0]
+                            pivot = float(matched.iloc[0]["Pivot"]) if not matched.empty and pd.notna(matched.iloc[0]["Pivot"]) else None
+                            stop = float(matched.iloc[0]["Stop"]) if not matched.empty and pd.notna(matched.iloc[0]["Stop"]) else None
+                            try:
+                                image_bytes = cached_symbol_chart(
+                                    edge_meta["last_session"], selected, open_frame, high, low, close, volume,
+                                    pivot=pivot, stop=stop)
+                                st.image(image_bytes, caption=f"{selected} · research only · unverified corporate actions")
+                            except (ValueError, KeyError) as exc:
+                                st.warning("Chart unavailable: " + str(exc))
+
                 with st.expander("Candidate historical breakout evidence", expanded=False):
                     st.caption("Read-only technical outcomes for current setup candidates. "
                                "This is not a forecast, a VCP backtest, or an executable return study.")
