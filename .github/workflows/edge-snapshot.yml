@@ -63,6 +63,11 @@ jobs:
         run: python -m tools.edge_snapshot_publication --directory data/latest --publish
       - name: Publish non-secret research snapshot to EDGE repository
         run: |
+          target_branch="${GITHUB_REF_NAME}"
+          if [ -z "$target_branch" ] || [ "$target_branch" = "HEAD" ]; then
+            echo "UNSAFE_OR_MISSING_BRANCH_REF"; exit 1
+          fi
+          echo "Publishing snapshot only to triggering branch: $target_branch"
           git config user.name "spera-edge-bot"
           git config user.email "spera-edge-bot@users.noreply.github.com"
           # Keep the freshly generated snapshot while rebasing onto concurrent code changes.
@@ -75,9 +80,9 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
             for attempt in 1 2 3 4 5; do
-              git fetch origin main
-              if git rebase origin/main; then
-                if git push origin HEAD:main; then
+              git fetch origin "$target_branch"
+              if git rebase "origin/$target_branch"; then
+                if git push origin "HEAD:$target_branch"; then
                   exit 0
                 fi
               else
