@@ -104,16 +104,3 @@ def export_section(title, frame, key):
         st.download_button(fmt, export_bytes(frame, fmt, title),
                            file_name=f"edge_{slug}.{ext}", mime=mime,
                            key=f"export_{slug}_{ext}")
-
-
-def render_export_center(snapshot_table, metadata, snapshot_fresh):
-    st.subheader("Research Export Center")
-    st.caption("Dated, research-only downloads. No certified trading signals or private journal exports.")
-    if not metadata:
-        st.warning("No validated snapshot available.")
-        return
-    st.caption(f"Snapshot session: {metadata.get('last_session', 'unknown')} | Fresh: {snapshot_fresh}")
-    for title, dataset in (("Leadership ranks", "leadership"),
-                           ("Current membership", "current_membership")):
-        frame = snapshot_table(dataset)
-        export_section(title, frame, dataset)
