@@ -579,23 +579,36 @@ def render_private_portfolio(close, snapshot_usable):
         st.caption('Average-cost accounting includes entry/exit fees. Unrealized P&L excludes estimated exit costs. Open risk uses latest mark to stop, floored at zero; stops do not guarantee execution.')
         if not summary['marks_complete']:
             st.warning('Missing or stale marks: exposure, unrealized P&L and risk are unavailable. New-entry sizing is disabled.')
-        capital = st.number_input('Account equity (INR)', min_value=1.0, value=500000.0)
-        risk_pct = st.number_input('Permitted risk per trade (%)', min_value=0.1, max_value=5.0, value=1.0)
-        heat = st.number_input('Portfolio risk ceiling (%)', min_value=0.1, max_value=10.0, value=5.0)
-        exposure_limit = st.number_input('Gross exposure limit (%)', min_value=1.0, max_value=100.0, value=100.0)
-        single_limit = st.number_input('Single position limit (%)', min_value=1.0, max_value=100.0, value=10.0)
+        if not snapshot_usable:
+            st.info('Research Mode: position sizing and private journal submissions are disabled until the snapshot is fresh.')
+        capital = st.number_input('Account equity (INR)', min_value=1.0, value=500000.0, disabled=not snapshot_usable)
+        risk_pct = st.number_input('Permitted risk per trade (%)', min_value=0.1, max_value=5.0, value=1.0, disabled=not snapshot_usable)
+        heat = st.number_input('Portfolio risk ceiling (%)', min_value=0.1, max_value=10.0, value=5.0, disabled=not snapshot_usable)
+        exposure_limit = st.number_input('Gross exposure limit (%)', min_value=1.0, max_value=100.0, value=100.0, disabled=not snapshot_usable)
+        single_limit = st.number_input('Single position limit (%)', min_value=1.0, max_value=100.0, value=10.0, disabled=not snapshot_usable)
         revision = len(events)
         if 'edge_event_id' not in st.session_state:
             st.session_state['edge_event_id'] = str(uuid.uuid4())
+        loaded_plan = st.session_state.get('saved_plan_selected')
+        if loaded_plan:
+            # A cached UI selection is not authorization: re-check owner and ACTIVE state in D1.
+            from edge_core.saved_trade_plans import OwnerPlanStore
+            try:
+                loaded_plan = OwnerPlanStore(owner, query).load_active(loaded_plan['plan_id'])
+            except (ValueError, KeyError):
+                loaded_plan = None
+                st.session_state.pop('saved_plan_selected', None)
+        if loaded_plan:
+            st.caption(f"Loaded plan: {loaded_plan['Symbol']} · pivot ₹{loaded_plan['Pivot']:.2f} · stop ₹{loaded_plan['Stop']:.2f}. Confirm all values against the actual fill before recording.")
         with st.form('private_edge_event'):
             kind = st.selectbox('Record type', ['BUY', 'SELL', 'STOP', 'NOTE'])
-            symbol = st.text_input('Recorded symbol').strip().upper()
+            symbol = st.text_input('Recorded symbol', value=loaded_plan['Symbol'] if loaded_plan else '').strip().upper()
             quantity = st.number_input('Filled quantity', min_value=1, value=1, step=1)
-            price = st.number_input('Actual fill price', min_value=0.01, value=100.0)
-            stop = st.number_input('Protective stop price', min_value=0.01, value=95.0)
+            price = st.number_input('Actual fill price', min_value=0.01, value=float(loaded_plan['Pivot']) if loaded_plan else 100.0)
+            stop = st.number_input('Protective stop price', min_value=0.01, value=float(loaded_plan['Stop']) if loaded_plan else 95.0)
             fee = st.number_input('Transaction fees (INR)', min_value=0.0, value=0.0)
             note = st.text_area('Private review note', max_chars=10000)
-            submit = st.form_submit_button('Record private event')
+            submit = st.form_submit_button('Record private event', disabled=not snapshot_usable)
         breached = not positions.empty and positions['Stop_Breached'].fillna(False).any()
         if breached:
             st.warning('A recorded protective stop is breached. Resolve the position before planning new entries.')
@@ -612,6 +625,8 @@ def render_private_portfolio(close, snapshot_usable):
             sizing = None
         if submit:
             try:
+                if not snapshot_usable:
+                    raise ValueError('Execution locked: stale snapshot')
                 if kind == 'BUY' and (sizing is None or quantity > sizing['quantity']):
                     raise ValueError('Entry exceeds permitted portfolio risk or exposure capacity')
                 ledger.append(kind, symbol, quantity=int(quantity), price=price, stop=stop, fee=fee, note=note, event_id=st.session_state['edge_event_id'], expected_revision=revision)

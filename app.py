@@ -75,9 +75,9 @@ if edge_meta:
         age=(now_ist.date()-last_session).days
         snapshot_usable=snapshot_is_fresh(last_session, now_ist)
         if not snapshot_usable:
-            st.error(f"Snapshot does not match the latest expected completed session ({age} calendar days old). Weekday/verified-special-session check; unverified exchange holidays fail closed. Do not trade from stale results.")
+            st.info(f"Note: Displaying data from {last_session.isoformat()}. Research only. Execution forms are locked.")
     except (ValueError,TypeError,KeyError):
-        st.error("Snapshot session date invalid; research outputs are not certified.")
+        st.info(f"Note: Displaying data from {edge_meta.get('last_session', 'unknown session')}. Research only. Execution forms are locked.")
     st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
@@ -338,6 +338,87 @@ elif page == "Trade Desk":
     from edge_fundamentals_ui import render_fundamentals
     render_fundamentals(SNAPSHOT_DIR)
     st.subheader("Trade Desk")
+    from edge_core.saved_trade_plans import OwnerPlanStore, evaluate_plans, status
+    from edge_core.d1_store import d1_query
+    from edge_workspace import identity_owner
+    st.subheader("Saved Trade Plans")
+    st.caption("Private D1-backed research plans. Login required. Invalidated plans are retained in owner-scoped D1 audit history.")
+    desk_close = snapshot_table("close") if edge_meta else None
+    last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
+    plan_store = None
+    try:
+        try:
+            allowed = st.secrets.get("EDGE_JOURNAL_ALLOWED_EMAILS", [])
+            auth_configured = "auth" in st.secrets
+        except FileNotFoundError:
+            allowed, auth_configured = [], False
+        if isinstance(allowed, str):
+            allowed = [item.strip() for item in allowed.split(",")]
+        if not allowed or not auth_configured:
+            st.warning("Saved plans locked: owner authentication not configured.")
+        elif not st.user.is_logged_in:
+            if st.button("Sign in to saved plans", key="plans_sign_in"):
+                st.login()
+        else:
+            owner = identity_owner(dict(st.user), allowed)
+            keys = ("EDGE_CF_ACCOUNT_ID", "EDGE_D1_DATABASE_ID", "EDGE_CF_API_TOKEN")
+            creds = [st.secrets.get(k) for k in keys]
+            if not all(creds):
+                raise ValueError("D1 credentials missing")
+            def plan_query(sql, params=()):
+                return d1_query(sql, params, account_id=creds[0], database_id=creds[1], token=creds[2])
+            plan_store = OwnerPlanStore(owner, plan_query)
+            plan_store.initialize()
+    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
+        st.warning(f"Private saved plans unavailable: {exc}")
+    if plan_store is not None:
+        try:
+            saved = plan_store.list_active()
+            for plan in saved:
+                if status(plan, last_prices.get(plan["Symbol"])) == "INVALID":
+                    plan_store.invalidate(plan["plan_id"])
+            active = plan_store.list_active()
+            evaluated = evaluate_plans(active, last_prices)
+            if evaluated:
+                st.dataframe(pd.DataFrame(evaluated), use_container_width=True, hide_index=True)
+                for i, plan in enumerate(evaluated):
+                    cols = st.columns([3, 1, 1])
+                    cols[0].write(f"{plan['Symbol']} · {plan['Setup Date']} · {plan['Status']}")
+                    if cols[1].button("Load Plan", key=f"load_plan_{i}"):
+                        st.session_state["saved_plan_selected"] = plan_store.load_active(plan["plan_id"])
+                        st.rerun()
+                    if plan["Status"] == "TRIGGERED":
+                        if cols[2].button("Calculate Size", key=f"size_plan_{i}", disabled=not snapshot_usable):
+                            st.session_state["saved_plan_selected"] = plan_store.load_active(plan["plan_id"])
+                            st.session_state["saved_plan_size_requested"] = True
+                            st.rerun()
+            else:
+                st.info("No active saved plans.")
+            selected_plan = st.session_state.get("saved_plan_selected")
+            if selected_plan:
+                # Recheck ownership and ACTIVE status every rerun; never trust session state as authority.
+                try:
+                    selected_plan = plan_store.load_active(selected_plan["plan_id"])
+                    st.session_state["saved_plan_selected"] = selected_plan
+                    st.write({"Loaded research plan": selected_plan})
+                    if st.session_state.pop("saved_plan_size_requested", False):
+                        st.info("Review the loaded entry and stop in Portfolio & Journal. Sizing remains locked when the snapshot is stale.")
+                except (KeyError, ValueError):
+                    st.session_state.pop("saved_plan_selected", None)
+            with st.form("save_trade_plan"):
+                plan_symbol = st.text_input("Plan symbol", key="plan_symbol")
+                plan_pivot = st.number_input("Pivot / entry", min_value=0.01, value=100.0, key="plan_pivot")
+                plan_stop = st.number_input("Initial stop", min_value=0.01, value=95.0, key="plan_stop")
+                plan_target = st.number_input("Target", min_value=0.01, value=115.0, key="plan_target")
+                plan_date = st.date_input("Setup date", key="plan_date")
+                plan_submit = st.form_submit_button("Save Plan")
+            if plan_submit:
+                plan_store.add({"Symbol": plan_symbol, "Pivot": plan_pivot, "Stop": plan_stop,
+                                "Target": plan_target, "Setup Date": plan_date.isoformat()})
+                st.success("Private plan saved to D1.")
+                st.rerun()
+        except (ValueError, KeyError, TypeError, RuntimeError) as exc:
+            st.warning(f"Saved plans unavailable: {exc}")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
     with st.container():
         st.caption("Automatic daily OHLCV snapshot; minimum 253 aligned sessions.")
@@ -349,10 +430,7 @@ elif page == "Trade Desk":
             st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
-                if snapshot_usable:
-                    render_entries(close,high,low,volume,edge_meta["last_session"])
-                else:
-                    st.error("Entry planning disabled: snapshot is stale, future-dated or not from a completed session.")
+                render_entries(close,high,low,volume,edge_meta["last_session"])
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(close, volume, high, low)
