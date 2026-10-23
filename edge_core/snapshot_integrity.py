@@ -54,9 +54,14 @@ def validate_snapshot(directory="data/latest"):
     opened = pd.read_csv(open_path, index_col="Date")
     if (not opened.index.equals(frames["close"].index)
             or not opened.columns.equals(frames["close"].columns)
-            or opened.isna().any().any()):
+            or (opened.notna() != frames["close"].notna()).any().any()):
         raise ValueError("Opening price alignment or completeness failure")
-    if ((opened > frames["high"]) | (opened < frames["low"])).any().any():
+    numeric_open = opened.apply(pd.to_numeric, errors="coerce")
+    if ((opened.notna() & numeric_open.isna()).any().any()
+            or (numeric_open.notna() & ~pd.DataFrame(__import__("numpy").isfinite(numeric_open.to_numpy(dtype=float)), index=opened.index, columns=opened.columns)).any().any()
+            or (numeric_open.notna() & (numeric_open <= 0)).any().any()):
+        raise ValueError("Invalid observed opening price")
+    if ((numeric_open > frames["high"]) | (numeric_open < frames["low"])).any().any():
         raise ValueError("Opening prices outside observed candle range")
     close = frames["close"]
     if len(close.columns) != retrieved:
