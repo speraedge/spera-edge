@@ -77,7 +77,7 @@ else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
 
 page = st.sidebar.radio("SPERA EDGE navigation", ["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal", "Financial Evidence Review"], key="edge_active_page")
-prices = snapshot_table("close") if edge_meta else None
+prices = snapshot_table("close") if edge_meta and page in ("Market Pulse", "Portfolio & Journal") else None
 if page == "Market Pulse":
     st.subheader("Market Pulse")
     if prices is not None:
