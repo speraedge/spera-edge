@@ -466,6 +466,16 @@ elif page == "Trade Desk":
                             pivot = float(matched.iloc[0]["Pivot"]) if not matched.empty and pd.notna(matched.iloc[0]["Pivot"]) else None
                             stop = float(matched.iloc[0]["Stop"]) if not matched.empty and pd.notna(matched.iloc[0]["Stop"]) else None
                             try:
+                                # Explain missing OHLCV sessions rather than silently discarding them.
+                                chart_indexes = []
+                                for chart_frame in (open_frame, high, low, close, volume):
+                                    chart_series = pd.to_numeric(chart_frame[selected], errors="coerce")
+                                    chart_indexes.append(pd.DatetimeIndex(pd.to_datetime(chart_series.dropna().index)))
+                                aligned_dates = chart_indexes[0]
+                                for chart_index in chart_indexes[1:]:
+                                    aligned_dates = aligned_dates.intersection(chart_index)
+                                if any(len(index) != len(aligned_dates) for index in chart_indexes):
+                                    st.warning(f"Chart OHLCV dates differ for {selected}; using {len(aligned_dates)} common sessions (50 required). Missing dates are excluded, not fabricated.")
                                 image_bytes = cached_symbol_chart(
                                     edge_meta["last_session"], selected, open_frame, high, low, close, volume,
                                     pivot=pivot, stop=stop)
