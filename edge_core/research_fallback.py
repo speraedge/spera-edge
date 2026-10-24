@@ -35,13 +35,18 @@ def load_leadership(latest_dir, history_dir, *, latest_date=None, current_date=N
         if metadata.get("universe") != "NIFTY_500":
             return None, None, True
         for entry in sorted(metadata.get("weeks", []), key=lambda x: x.get("weekly_key", ""), reverse=True):
+            if latest_date and str(entry.get("weekly_key", "")) > str(latest_date):
+                continue
             file = entry.get("file", "")
             if not file or Path(file).name != file or not file.endswith(".csv"):
                 continue
             archive = history_dir / file
             if not archive.is_file() or hashlib.sha256(archive.read_bytes()).hexdigest() != entry.get("sha256"):
                 continue
-            frame = pd.read_csv(archive)
+            try:
+                frame = pd.read_csv(archive)
+            except (OSError, ValueError, pd.errors.ParserError):
+                continue
             # SPERA Wisdom historical export has Ticker instead of Symbol.
             if "Symbol" not in frame.columns and "Ticker" in frame.columns:
                 frame = frame.rename(columns={"Ticker": "Symbol"})
