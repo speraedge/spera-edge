@@ -33,17 +33,17 @@ class Phase1CachePerformance(unittest.TestCase):
         })
         fn.clear()
         t0 = time.perf_counter()
-        cold = fn(frame)
+        cold = fn("snapshot-a", frame)
         cold_ms = (time.perf_counter() - t0) * 1000
         warm_times = []
         for _ in range(5):
             t0 = time.perf_counter()
-            warm = fn(frame)
+            warm = fn("snapshot-a", frame)
             warm_times.append((time.perf_counter() - t0) * 1000)
         assert_frame_equal(cold, warm, check_exact=True)
         altered = frame.copy()
         altered.loc[0, "Ret_6M"] += 0.5
-        changed = fn(altered)
+        changed = fn("snapshot-b", altered)
         assert_frame_equal(changed, apply_frozen_v1_scores(altered), check_exact=True)
         self.assertFalse(changed.equals(cold), "Modified input must invalidate cache")
         report = {"phase": 1, "case": "500-stock Momentum V1 cache",
