@@ -63,7 +63,7 @@ class Phase1Equivalence(unittest.TestCase):
         actual = self.w["cached_setups"]("snapshot-test", close, volume, high, low)
         expected = compute_setup_scanner(close, volume, high_df=high, low_df=low)
         assert_frame_equal(actual, expected, check_exact=True)
-        actual_subset = self.w["cached_setups"](close, volume, high, low, symbols=("AAA",))
+        actual_subset = self.w["cached_setups"]("snapshot-test", close, volume, high, low, symbols=("AAA",))
         expected_subset = compute_setup_scanner(close, volume, symbols=["AAA"], high_df=high, low_df=low)
         assert_frame_equal(actual_subset, expected_subset, check_exact=True)
 
