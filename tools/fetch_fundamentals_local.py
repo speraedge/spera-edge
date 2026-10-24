@@ -5,6 +5,8 @@ Usage (from any working directory):
 Requires installed requirements.txt and official data/latest/current_membership.csv.
 """
 import sys
+import shutil
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,13 +26,26 @@ def main():
         raise SystemExit("Missing official membership CSV: " + str(MEMBERSHIP))
     # Reuse the exact existing exchange-fetch and privacy-gated publication logic.
     # The underlying fetcher writes atomically after constructing all rows.
-    rows = run(membership=str(MEMBERSHIP), output=str(OUTPUT), mapping_path=str(MAPPING))
-    validate_public_csv(OUTPUT)
-    successes = sum(row["Status"] == "AUTO" for row in rows)
-    if not successes:
-        # The fetcher may have published all-failed rows. Do not claim a
-        # successful fundamentals acquisition or recommend uploading them.
-        raise SystemExit("No verified fundamentals acquired (0 AUTO rows). Do NOT upload this CSV; exchange data may be unavailable.")
+    # Preserve the previous valid CSV if all exchanges fail or an exception occurs.
+    with tempfile.TemporaryDirectory() as temporary:
+        backup = Path(temporary) / "fundamentals_auto.csv"
+        had_valid_previous = False
+        if OUTPUT.is_file():
+            validate_public_csv(OUTPUT)
+            shutil.copy2(OUTPUT, backup)
+            had_valid_previous = True
+        try:
+            rows = run(membership=str(MEMBERSHIP), output=str(OUTPUT), mapping_path=str(MAPPING))
+            validate_public_csv(OUTPUT)
+            successes = sum(row["Status"] == "AUTO" for row in rows)
+            if not successes:
+                raise ValueError("No verified fundamentals acquired (0 AUTO rows)")
+        except Exception as exc:
+            if had_valid_previous:
+                shutil.copy2(backup, OUTPUT)
+            else:
+                OUTPUT.unlink(missing_ok=True)
+            raise SystemExit(f"Fetch failed: {exc}. Last-good CSV preserved if present. Do NOT upload a failed result.") from exc
     print(f"SUCCESS: Saved {OUTPUT} ({len(rows)} symbols; {successes} verified AUTO rows).")
     print("Review the CSV and upload ONLY data/latest/fundamentals_auto.csv to GitHub.")
 
