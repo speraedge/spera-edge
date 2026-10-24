@@ -74,7 +74,7 @@ class CandlestickChartTests(unittest.TestCase):
 
     def test_rejects_missing_history(self):
         with self.assertRaisesRegex(ValueError, "Insufficient aligned 50-session"):
-            self.render(bars=50, stop=None) if False else render_validated_ohlcv_png(
+            render_validated_ohlcv_png(
                 self.open_.iloc[-49:], self.high, self.low, self.close,
                 self.volume, "AAA")
 
