@@ -386,6 +386,7 @@ elif page == "Trade Desk":
             evaluated = evaluate_plans(active, last_prices)
             if evaluated:
                 st.dataframe(pd.DataFrame(evaluated), use_container_width=True, hide_index=True)
+                export_section("Private saved trade plans", pd.DataFrame(evaluated), "private_saved_trade_plans")
                 for i, plan in enumerate(evaluated):
                     cols = st.columns([3, 1, 1])
                     cols[0].write(f"{plan['Symbol']} · {plan['Setup Date']} · {plan['Status']}")
