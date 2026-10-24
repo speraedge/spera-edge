@@ -2,8 +2,8 @@ name: NIFTY 500 automatic research snapshot
 on:
   workflow_dispatch:
   schedule:
-    # 20:00 IST Monday-Friday: single scheduled EOD attempt, one stale-only retry.
-    - cron: '30 14 * * 1-5'
+    # 22:30 IST Monday-Friday (17:00 UTC): one EOD attempt, one stale-only 30-minute retry.
+    - cron: '0 17 * * 1-5'
 permissions:
   contents: write
 concurrency:
