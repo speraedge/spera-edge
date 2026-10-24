@@ -9,6 +9,7 @@ import pandas as pd
 from edge_exports import numbered, export_section
 from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
+from edge_core.stops import validate_stop_update
 from edge_core.trade_review import journal_quality
 from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
 from edge_core.decision_outcomes import decision_outcomes
@@ -240,7 +241,7 @@ class Ledger:
                         raise ValueError('Initial long protective stop must be below purchase price')
                     holding['quantity'] += int(quantity)
                     holding['cost'] += quantity * price + fee
-                    holding['stop'] = stop
+                    holding['stop'] = max(holding['stop'], stop)
                 else:
                     if quantity > holding['quantity']:
                         raise ValueError('Exit exceeds recorded open quantity')
@@ -251,7 +252,7 @@ class Ledger:
             elif kind == 'STOP':
                 if holding['quantity'] <= 0 or stop <= 0:
                     raise ValueError('Stop update requires an open position and positive stop')
-                holding['stop'] = stop
+                holding['stop'] = validate_stop_update(holding['stop'], stop)
         rows = []
         for symbol, holding in holdings.items():
             quantity = holding['quantity']
