@@ -19,6 +19,12 @@ class CandlestickChartTests(unittest.TestCase):
         return render_validated_ohlcv_png(self.open_, self.high, self.low,
                                           self.close, self.volume, "AAA", **kwargs)
 
+    def test_app_loader_parses_open_as_date_index(self):
+        from pathlib import Path
+        app = (Path(__file__).parents[1] / "app.py").read_text()
+        self.assertIn('name in ("open","close","high","low","volume")', app)
+        self.assertIn('index_col="Date",parse_dates=["Date"]', app)
+
     def test_png_with_research_levels(self):
         raw = self.render(pivot=165, stop=145)
         self.assertTrue(raw.startswith(bytes.fromhex("89504e470d0a1a0a")))

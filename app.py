@@ -59,7 +59,7 @@ def snapshot_table(name):
     path=SNAPSHOT_DIR/f"{name}.csv"
     if not path.is_file():
         return None
-    return pd.read_csv(path,index_col="Date",parse_dates=["Date"]).sort_index() if name in ("close","high","low","volume") else pd.read_csv(path)
+    return pd.read_csv(path,index_col="Date",parse_dates=["Date"]).sort_index() if name in ("open","close","high","low","volume") else pd.read_csv(path)
 
 try:
     validate_snapshot(SNAPSHOT_DIR)
