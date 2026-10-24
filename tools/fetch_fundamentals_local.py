@@ -18,9 +18,9 @@ from edge_core.fundamentals_privacy import COLUMNS, publish_public_csv, validate
 
 MEMBERSHIP = ROOT / "data/latest/current_membership.csv"
 OUTPUT = ROOT / "data/latest/fundamentals_auto.csv"
-MAPPING_PATHS = [ROOT / "data/latest/nifty_500_mapping.csv",
-                 ROOT / "nifty_500_mapping.csv",
-                 ROOT / "data/latest/bse_mapping.csv"]
+MAPPING_PATHS = [ROOT / "data/latest/bse_mapping.csv",
+                 ROOT / "data/latest/nifty_500_mapping.csv",
+                 ROOT / "nifty_500_mapping.csv"]
 CODE_RE = re.compile(r"^[0-9]{5,7}$")
 MONTHS = {name: n for n, name in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1)}
