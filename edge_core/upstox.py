@@ -1,5 +1,6 @@
 """Read-only Upstox daily history adapter. No token exchange or order endpoints."""
 import os
+from datetime import timedelta
 from urllib.parse import quote
 import pandas as pd
 import requests
@@ -25,17 +26,24 @@ def fetch_daily_candles(instrument_key, start_date, end_date, token=None, sessio
     if start > end:
         raise ValueError("Start date must not exceed end date.")
     key = quote(str(instrument_key), safe="")
-    url = f"{BASE_URL}/historical-candle/{key}/day/{end.isoformat()}/{start.isoformat()}"
     client = session or requests
-    try:
-        response = client.get(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}, timeout=30)
-        response.raise_for_status()
-        payload = response.json()
-    except (requests.RequestException, ValueError) as exc:
-        raise UpstoxDataError("Upstox historical request failed; verify token, instrument and date range.") from exc
-    if payload.get("status") != "success":
-        raise UpstoxDataError("Upstox did not return a successful historical response.")
-    rows = (payload.get("data") or {}).get("candles") or []
+    rows = []
+    # Bound each daily request to <=350 calendar days; concatenate without
+    # overlap so long-window requests work with provider per-call limits.
+    cursor = start
+    while cursor <= end:
+        chunk_end = min(end, cursor + timedelta(days=349))
+        url = f"{BASE_URL}/historical-candle/{key}/day/{chunk_end.isoformat()}/{cursor.isoformat()}"
+        try:
+            response = client.get(url, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}, timeout=30)
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as exc:
+            raise UpstoxDataError("Upstox historical request failed; verify token, instrument and date range.") from exc
+        if payload.get("status") != "success":
+            raise UpstoxDataError("Upstox did not return a successful historical response.")
+        rows.extend((payload.get("data") or {}).get("candles") or [])
+        cursor = chunk_end + timedelta(days=1)
     if not rows:
         return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
     if any(len(row) < 6 for row in rows):
