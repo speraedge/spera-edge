@@ -14,7 +14,7 @@ class ResearchModeTests(unittest.TestCase):
         cls.workspace = (ROOT / "edge_workspace.py").read_text()
 
     def test_research_tables_not_gated_by_freshness(self):
-        self.assertIn('render_entries(close,high,low,volume,edge_meta["last_session"])', self.app)
+        self.assertIn('render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks', self.app)
         self.assertNotIn('if snapshot_usable:\n                    render_entries(', self.app)
         self.assertIn('render_market(prices)', self.app)
 
