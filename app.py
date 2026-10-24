@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from edge_core.research_fallback import load_leadership
 from edge_core.snapshot_integrity import validate_snapshot
 from edge_core.ohlcv_integrity import snapshot_is_fresh
-from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report
+from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report, resolve_owner
 from edge_exports import export_section, numbered
 from edge_trader_readiness_ui import render_trader_readiness
 
@@ -345,27 +345,21 @@ elif page == "Trade Desk":
     st.subheader("Trade Desk")
     from edge_core.saved_trade_plans import OwnerPlanStore, evaluate_plans, status
     from edge_core.d1_store import d1_query
-    from edge_workspace import identity_owner
     st.subheader("Saved Trade Plans")
     st.caption("Private D1-backed research plans. Login required. Invalidated plans are retained in owner-scoped D1 audit history.")
     desk_close = snapshot_table("close") if edge_meta else None
     last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
     plan_store = None
     try:
-        try:
-            allowed = st.secrets.get("EDGE_JOURNAL_ALLOWED_EMAILS", [])
-            auth_configured = "auth" in st.secrets
-        except FileNotFoundError:
-            allowed, auth_configured = [], False
-        if isinstance(allowed, str):
-            allowed = [item.strip() for item in allowed.split(",")]
-        if not allowed or not auth_configured:
+        owner, owner_status = resolve_owner(st)
+        if owner_status == "CONFIGURATION_REQUIRED":
             st.warning("Saved plans locked: owner authentication not configured.")
-        elif not st.user.is_logged_in:
+        elif owner_status == "LOGIN_REQUIRED":
             if st.button("Sign in to saved plans", key="plans_sign_in"):
                 st.login()
+        elif owner_status == "UNAUTHORIZED":
+            raise ValueError("A verified, allowlisted OIDC identity is required")
         else:
-            owner = identity_owner(dict(st.user), allowed)
             keys = ("EDGE_CF_ACCOUNT_ID", "EDGE_D1_DATABASE_ID", "EDGE_CF_API_TOKEN")
             creds = [st.secrets.get(k) for k in keys]
             if not all(creds):
