@@ -657,25 +657,23 @@ def render_private_portfolio(close, snapshot_usable):
                 st.write({'new_entry_plan': sizing})
         else:
             sizing = None
-        if submit:
-            # Validate form identity before risk checks or any ledger/D1 write.
-            # NOTE records can be general market observations without a ticker.
-            record_symbol = symbol or ('GENERAL' if kind == 'NOTE' else '')
-            if not record_symbol:
-                st.warning('Please enter a symbol')
-            else:
-                try:
-                    if not snapshot_usable:
-                        raise ValueError('Execution locked: stale snapshot')
-                    if kind == 'BUY' and sizing is None:
-                        raise ValueError('BUY blocked: sizing and earnings clearance are required before recording.')
-                    if kind == 'BUY' and quantity > sizing['quantity']:
-                        raise ValueError('Entry exceeds permitted portfolio risk or exposure capacity')
-                    ledger.append(kind, record_symbol, quantity=int(quantity), price=price, stop=stop, fee=fee, note=note, event_id=st.session_state['edge_event_id'], expected_revision=revision)
-                    st.session_state['edge_event_id'] = str(uuid.uuid4())
-                    st.rerun()
-                except ValueError as exc:
-                    st.error(str(exc))
+        if submit and not symbol and kind != 'NOTE':
+            st.warning('Please enter a symbol')
+        elif submit:
+            # A NOTE without a ticker is a general market journal entry.
+            record_symbol = symbol or 'GENERAL'
+            try:
+                if not snapshot_usable:
+                    raise ValueError('Execution locked: stale snapshot')
+                if kind == 'BUY' and sizing is None:
+                    raise ValueError('BUY blocked: sizing and earnings clearance are required before recording.')
+                if kind == 'BUY' and quantity > sizing['quantity']:
+                    raise ValueError('Entry exceeds permitted portfolio risk or exposure capacity')
+                ledger.append(kind, record_symbol, quantity=int(quantity), price=price, stop=stop, fee=fee, note=note, event_id=st.session_state['edge_event_id'], expected_revision=revision)
+                st.session_state['edge_event_id'] = str(uuid.uuid4())
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
         if events:
             history = pd.DataFrame(events)
             st.dataframe(numbered(history), use_container_width=True)
