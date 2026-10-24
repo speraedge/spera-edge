@@ -48,12 +48,19 @@ def parse_bhavcopy(blob):
             blob = archive.read(files[0])
     for records, headers in rows_from_csv(blob):
         lookup = {key(h): h for h in headers}
-        code_field = next((lookup[x] for x in ("sccode", "scripcode", "scripcd") if x in lookup), None)
+        code_field = next((lookup[x] for x in ("sccode", "scripcode", "scripcd", "fininstrmid") if x in lookup), None)
         isin_field = next((lookup[x] for x in ("isincode", "isin") if x in lookup), None)
         if not code_field or not isin_field:
-            raise ValueError(f"Bhavcopy missing SC_CODE/ISIN_CODE: {headers}")
+            raise ValueError(f"Bhavcopy missing BSE code and ISIN columns: {headers}")
+        udiff = "fininstrmid" in lookup
         result = {}
         for record in records:
+            if udiff:
+                segment = str(record.get(lookup.get("sgmt", ""), "")).strip().upper()
+                instrument = str(record.get(lookup.get("fininstrmtp", ""), "")).strip().upper()
+                source = str(record.get(lookup.get("src", ""), "")).strip().upper()
+                if segment != "CM" or instrument != "STK" or source != "BSE":
+                    continue
             isin = str(record.get(isin_field) or "").strip().upper()
             code = str(record.get(code_field) or "").strip()
             if re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", isin) and re.fullmatch(r"[0-9]{5,7}", code):
