@@ -39,7 +39,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         raise RuntimeError("NIFTY 500 mapped identity coverage below safe threshold")
     mapping_ok=mapping.loc[mapping["Mapping_Status"].eq("MAPPED")]
     end=date.today()
-    start=end-timedelta(days=490)
+    start=end-timedelta(days=800)  # ~500 exchange sessions, allowing holidays and closures
     fields={name:{} for name in ("open","close","high","low","volume")}
     failures=[]
     successful=0
@@ -62,7 +62,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         matrices[name]=pd.DataFrame(series).sort_index()
     close=matrices["close"]
     volume=matrices["volume"].reindex(close.index)
-    # This pipeline intentionally requires 253 common sessions across the entire universe.
+    # Retain the 253-session minimum research integrity gate while fetching ~500 sessions.
     # Individual provider gaps fail closed rather than distorting point-in-time breadth.
     if len(close)<253:
         raise RuntimeError("Insufficient market calendar history; refusing publication")
@@ -86,7 +86,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     research.to_csv(staging/"leadership.csv",index=False)
     # Store recent OHLCV for chart inspection; do not expose provider secrets.
     for name,frame in matrices.items():
-        frame.tail(253).to_csv(staging/f"{name}.csv",index_label="Date")
+        frame.tail(500).to_csv(staging/f"{name}.csv",index_label="Date")
     metadata={
         "universe":"NIFTY_500","expected":expected,"mapped":len(mapping_ok),
         "retrieved":successful,"retrieval_failures":failures,
@@ -108,8 +108,8 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     diagnostic.mkdir(parents=True, exist_ok=True)
     for name in ("open.csv", "close.csv", "metadata.json"):
         shutil.copy2(staging / name, diagnostic / name)
-    opened = matrices["open"].tail(253)
-    closed = matrices["close"].tail(253)
+    opened = matrices["open"].tail(500)
+    closed = matrices["close"].tail(500)
     missing_open = closed.notna() & opened.isna()
     missing_close = opened.notna() & closed.isna()
     rows = []
