@@ -14,10 +14,10 @@ class LocalFundamentalsTests(unittest.TestCase):
         self.assertIn("git restore --staged data/latest/fundamentals_auto.csv", WORKFLOW)
 
     def test_local_script_reuses_privacy_gate_and_preserves_last_good(self):
-        self.assertIn("from edge_fundamentals import run", SCRIPT)
+        self.assertIn("fetch = dalal.fundamentals", SCRIPT)
         self.assertIn("validate_public_csv(OUTPUT)", SCRIPT)
         self.assertIn("shutil.copy2(backup, OUTPUT)", SCRIPT)
-        self.assertIn("if not successes:", SCRIPT)
+        self.assertIn("if not verified:", SCRIPT)
         self.assertIn("if __name__ == \"__main__\":", SCRIPT)
 
 
