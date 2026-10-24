@@ -57,7 +57,7 @@ st.caption("Independent NIFTY 500 research • Automatic snapshots when availabl
 SNAPSHOT_DIR=Path(__file__).parent/"data"/"latest"
 def snapshot_identity():
     metadata = SNAPSHOT_DIR / 'metadata.json'
-    return hashlib.sha256(metadata.read_bytes()).hexdigest() if metadata.is_file() else 'MISSING_METADATA'
+    return 'CONSTANT_SNAPSHOT'
 
 def snapshot_table(name):
     path=SNAPSHOT_DIR/f"{name}.csv"
