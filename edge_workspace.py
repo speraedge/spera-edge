@@ -275,7 +275,7 @@ class Ledger:
             elif kind == 'STOP':
                 if holding['quantity'] <= 0 or stop <= 0:
                     raise ValueError('Stop update requires an open position and positive stop')
-                holding['stop'] = validate_stop_update(holding['stop'], stop)
+                holding['stop'] = stop
         rows = []
         for symbol, holding in holdings.items():
             quantity = holding['quantity']
