@@ -640,20 +640,30 @@ def render_private_portfolio(close, snapshot_usable):
             st.warning('A recorded protective stop is breached. Resolve the position before planning new entries.')
         if summary['marks_complete'] and snapshot_usable and not breached and kind == 'BUY' and stop < price:
             existing = positions.loc[positions['Symbol'].eq(symbol), 'Exposure'].sum() if not positions.empty else 0
-            sizing = plan_quantity(capital, risk_pct, price, stop, summary['open_risk'], summary['exposure'], heat, exposure_limit, single_limit)
-            remaining_single = max(0, capital * single_limit / 100 - existing)
-            sizing['quantity'] = min(sizing['quantity'], math.floor(remaining_single / price))
-            sizing['quantity'] = min(sizing['quantity'], max(0, math.floor((sizing['notional_capacity'] - fee) / price)), max(0, math.floor((min(capital * risk_pct / 100, sizing['available_risk']) - fee) / (price - stop))))
-            sizing['planned_risk'] = sizing['quantity'] * (price - stop) + fee if sizing['quantity'] else 0
-            sizing['notional'] = sizing['quantity'] * price
-            st.write({'new_entry_plan': sizing})
+            sizing = None
+            try:
+                sizing = plan_quantity(capital, risk_pct, price, stop, summary['open_risk'], summary['exposure'], heat, exposure_limit, single_limit)
+            except ValueError as exc:
+                if str(exc) == 'EARNINGS_EVENT_GAP_RISK':
+                    st.warning('Sizing preview blocked: Earnings clearance missing. Please confirm event risk.')
+                else:
+                    st.warning(f'Sizing preview unavailable: {exc}')
+            if sizing is not None:
+                remaining_single = max(0, capital * single_limit / 100 - existing)
+                sizing['quantity'] = min(sizing['quantity'], math.floor(remaining_single / price))
+                sizing['quantity'] = min(sizing['quantity'], max(0, math.floor((sizing['notional_capacity'] - fee) / price)), max(0, math.floor((min(capital * risk_pct / 100, sizing['available_risk']) - fee) / (price - stop))))
+                sizing['planned_risk'] = sizing['quantity'] * (price - stop) + fee if sizing['quantity'] else 0
+                sizing['notional'] = sizing['quantity'] * price
+                st.write({'new_entry_plan': sizing})
         else:
             sizing = None
         if submit:
             try:
                 if not snapshot_usable:
                     raise ValueError('Execution locked: stale snapshot')
-                if kind == 'BUY' and (sizing is None or quantity > sizing['quantity']):
+                if kind == 'BUY' and sizing is None:
+                    raise ValueError('BUY blocked: sizing and earnings clearance are required before recording.')
+                if kind == 'BUY' and quantity > sizing['quantity']:
                     raise ValueError('Entry exceeds permitted portfolio risk or exposure capacity')
                 ledger.append(kind, symbol, quantity=int(quantity), price=price, stop=stop, fee=fee, note=note, event_id=st.session_state['edge_event_id'], expected_revision=revision)
                 st.session_state['edge_event_id'] = str(uuid.uuid4())
