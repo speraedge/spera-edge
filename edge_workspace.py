@@ -664,8 +664,9 @@ def render_private_portfolio(close, snapshot_usable):
             history = pd.DataFrame(events)
             st.dataframe(numbered(history), use_container_width=True)
             export_section('Private trade journal', history, 'private_trade_journal')
-    except Exception:
-        st.error('Private ledger unavailable. No write success is assumed; retry after checking EDGE D1 configuration.')
+    except Exception as e:
+        st.error('Private ledger unavailable. No write success is assumed. Diagnostic traceback below; redact sensitive values before sharing.')
+        st.exception(e)
 
 
 def verify_d1():
