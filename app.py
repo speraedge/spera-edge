@@ -444,7 +444,7 @@ elif page == "Trade Desk":
             st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
-                render_entries(close,high,low,volume,edge_meta["last_session"])
+                render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks, leadership_date=trade_rank_date, leadership_historical=trade_historical)
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(close, volume, high, low)
