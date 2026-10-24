@@ -25,6 +25,24 @@ class StopWideningTests(unittest.TestCase):
         self.assertEqual(positions.iloc[0]["Stop"], 90)
         self.assertEqual(positions.iloc[0]["Quantity"], 2)
 
+    def test_reentry_after_full_exit_uses_fresh_stop(self):
+        positions, _ = Ledger._replay([
+            event("BUY", 90, 10, 100),
+            event("SELL", 0, 10, 110),
+            event("BUY", 72, 10, 80),
+        ], {})
+        self.assertEqual(positions.iloc[0]["Stop"], 72)
+        self.assertEqual(positions.iloc[0]["Quantity"], 10)
+
+    def test_partial_exit_then_buy_keeps_existing_stop(self):
+        positions, _ = Ledger._replay([
+            event("BUY", 90, 10, 100),
+            event("SELL", 0, 5, 110),
+            event("BUY", 72, 10, 80),
+        ], {})
+        self.assertEqual(positions.iloc[0]["Stop"], 90)
+        self.assertEqual(positions.iloc[0]["Quantity"], 15)
+
     def test_nonpositive_stop_rejected(self):
         with self.assertRaises(ValueError):
             Ledger._replay([event("BUY", 90, 1, 100), event("STOP", 0)], {})
