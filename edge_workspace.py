@@ -264,7 +264,7 @@ class Ledger:
                         raise ValueError('Initial long protective stop must be below purchase price')
                     holding['quantity'] += int(quantity)
                     holding['cost'] += quantity * price + fee
-                    holding['stop'] = stop
+                    holding['stop'] = max(holding['stop'], stop) if holding['quantity'] > int(quantity) else stop
                 else:
                     if quantity > holding['quantity']:
                         raise ValueError('Exit exceeds recorded open quantity')
