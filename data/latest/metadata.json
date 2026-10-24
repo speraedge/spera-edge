@@ -14,8 +14,8 @@
   "research_pass": 0,
   "research_review": 479,
   "research_fail": 22,
-  "last_session": "2026-10-22",
-  "generated_utc": "2026-10-23T08:26:33.715330+00:00",
+  "last_session": "2026-10-23",
+  "generated_utc": "2026-10-24T01:48:50.375398+00:00",
   "source": "Upstox historical candles + official NSE constituent identities",
   "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
   "certified": false,
@@ -23,7 +23,7 @@
     "coverage": 500,
     "eligible_50": 500,
     "eligible_200": 491,
-    "above_50_pct": 13.2,
-    "above_200_pct": 31.6
+    "above_50_pct": 10.2,
+    "above_200_pct": 27.1
   }
 }
