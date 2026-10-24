@@ -20,34 +20,34 @@ from zoneinfo import ZoneInfo
 from edge_core.research_fallback import load_leadership
 from edge_core.snapshot_integrity import validate_snapshot
 from edge_core.ohlcv_integrity import snapshot_is_fresh
-from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report
+from edge_workspace import render_market, render_entries, render_private_portfolio, leadership_evidence, render_industries, market_report, resolve_owner
 from edge_exports import export_section, numbered
 from edge_trader_readiness_ui import render_trader_readiness
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def cached_v1(frame):
-    return apply_frozen_v1_scores(frame)
+def cached_v1(snapshot_identity, _frame):
+    return apply_frozen_v1_scores(_frame)
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def cached_setups(close, volume, high, low, symbols=None):
-    return compute_setup_scanner(close, volume, symbols=symbols, high_df=high, low_df=low)
+def cached_setups(snapshot_identity, _close, _volume, _high, _low, symbols=None):
+    return compute_setup_scanner(_close, _volume, symbols=symbols, high_df=_high, low_df=_low)
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def cached_breakout_health(close, high, volume, low):
-    return breakout_health(close, high, volume, low=low)
+def cached_breakout_health(snapshot_identity, _close, _high, _volume, _low):
+    return breakout_health(_close, _high, _volume, low=_low)
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def cached_stage2_diagnostics(close):
+def cached_stage2_diagnostics(snapshot_identity, _close):
     records = []
-    for sym in close:
-        res = stage2_template(close[sym])
+    for sym in _close:
+        res = stage2_template(_close[sym])
         records.append({"Symbol": sym, "Price-template pass": res["eligible"], "Note": res["reason"]})
     return pd.DataFrame(records)
 
 @st.cache_data(show_spinner=False, ttl=3600, max_entries=100)
-def cached_symbol_chart(snapshot_identity, symbol, open_frame, high, low, close, volume, pivot=None, stop=None):
+def cached_symbol_chart(snapshot_identity, symbol, _open_frame, _high, _low, _close, _volume, pivot=None, stop=None):
     from edge_symbol_charts import render_validated_ohlcv_png
-    return render_validated_ohlcv_png(open_frame, high, low, close, volume, symbol,
+    return render_validated_ohlcv_png(_open_frame, _high, _low, _close, _volume, symbol,
                                      pivot=pivot, stop=stop)
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
@@ -55,6 +55,10 @@ st.title("SPERA EDGE")
 st.caption("Independent NIFTY 500 research • Automatic snapshots when available • No brokerage execution")
 
 SNAPSHOT_DIR=Path(__file__).parent/"data"/"latest"
+def snapshot_identity():
+    metadata = SNAPSHOT_DIR / 'metadata.json'
+    return hashlib.sha256(metadata.read_bytes()).hexdigest() if metadata.is_file() else 'MISSING_METADATA'
+
 def snapshot_table(name):
     path=SNAPSHOT_DIR/f"{name}.csv"
     if not path.is_file():
@@ -96,7 +100,7 @@ if page == "Market Pulse":
         breakout_high = snapshot_table("high")
         breakout_volume = snapshot_table("volume")
         if breakout_high is not None and breakout_volume is not None:
-            health = cached_breakout_health(prices, breakout_high, breakout_volume, snapshot_table('low'))
+            health = cached_breakout_health(snapshot_identity(), prices, breakout_high, breakout_volume, snapshot_table('low'))
             low_history = snapshot_table("low")
             if low_history is not None:
                 horizon_summary = breakout_horizon_comparison(
@@ -212,7 +216,7 @@ elif page == "Leadership Scanner":
                 frame["Ret_6M"]=pd.to_numeric(frame["Ret_6M"],errors="coerce")
                 frame["Ret_12M"]=pd.to_numeric(frame["Ret_12M"],errors="coerce")
                 frame["AnnVol"]=pd.to_numeric(frame["AnnVol"],errors="coerce")
-                scored=cached_v1(frame)
+                scored=cached_v1(snapshot_identity(), frame)
                 # Research levels remain provisional until RS, sector and source gates are verified.
                 close_for_levels=snapshot_table("close") if edge_meta else None
                 # Evaluate setup diagnostics only for high-percentile candidates.
@@ -227,7 +231,7 @@ elif page == "Leadership Scanner":
                     lo=snapshot_table("low")
                     vol=snapshot_table("volume")
                     if all(x is not None for x in (hi,lo,vol)):
-                        setup_candidates=cached_setups(close_for_levels, vol, hi, lo,
+                        setup_candidates=cached_setups(snapshot_identity(), close_for_levels, vol, hi, lo,
                                                        symbols=tuple(candidate_symbols))
                 levels=classify_leadership(scored,close_for_levels,setups=setup_candidates)
                 if close_for_levels is not None:
@@ -335,7 +339,7 @@ elif page == "Leadership Scanner":
     stage_close=prices if edge_meta and prices is not None else None
 
     if stage_close is not None and not stage_close.empty:
-        stage2_records = cached_stage2_diagnostics(stage_close)
+        stage2_records = cached_stage2_diagnostics(snapshot_identity(), stage_close)
         st.dataframe(numbered(stage2_records), use_container_width=True)
         export_section("Price template diagnostics", stage2_records, "price_template")
         st.caption("Stage 2 relative-strength requirement must be verified separately. Price-only pass is not full Stage 2 qualification.")
@@ -345,27 +349,21 @@ elif page == "Trade Desk":
     st.subheader("Trade Desk")
     from edge_core.saved_trade_plans import OwnerPlanStore, evaluate_plans, status
     from edge_core.d1_store import d1_query
-    from edge_workspace import identity_owner
     st.subheader("Saved Trade Plans")
     st.caption("Private D1-backed research plans. Login required. Invalidated plans are retained in owner-scoped D1 audit history.")
     desk_close = snapshot_table("close") if edge_meta else None
     last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
     plan_store = None
     try:
-        try:
-            allowed = st.secrets.get("EDGE_JOURNAL_ALLOWED_EMAILS", [])
-            auth_configured = "auth" in st.secrets
-        except FileNotFoundError:
-            allowed, auth_configured = [], False
-        if isinstance(allowed, str):
-            allowed = [item.strip() for item in allowed.split(",")]
-        if not allowed or not auth_configured:
+        owner, owner_status = resolve_owner(st)
+        if owner_status == "CONFIGURATION_REQUIRED":
             st.warning("Saved plans locked: owner authentication not configured.")
-        elif not st.user.is_logged_in:
+        elif owner_status == "LOGIN_REQUIRED":
             if st.button("Sign in to saved plans", key="plans_sign_in"):
                 st.login()
+        elif owner_status == "UNAUTHORIZED":
+            raise ValueError("A verified, allowlisted OIDC identity is required")
         else:
-            owner = identity_owner(dict(st.user), allowed)
             keys = ("EDGE_CF_ACCOUNT_ID", "EDGE_D1_DATABASE_ID", "EDGE_CF_API_TOKEN")
             creds = [st.secrets.get(k) for k in keys]
             if not all(creds):
@@ -447,7 +445,7 @@ elif page == "Trade Desk":
                 render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks, leadership_date=trade_rank_date, leadership_historical=trade_historical)
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
-                candidates=cached_setups(close, volume, high, low)
+                candidates=cached_setups(snapshot_identity(), close, volume, high, low)
                 st.dataframe(numbered(candidates), use_container_width=True)
                 export_section("VCP research candidates", candidates, "vcp_candidates")
                 with st.expander("Candlestick chart · saved OHLCV research", expanded=False):
@@ -479,7 +477,7 @@ elif page == "Trade Desk":
                                 if 50 <= len(aligned_dates) < 200:
                                     st.warning(f"Only {len(aligned_dates)} aligned OHLCV sessions for {selected}; chart displays 50-SMA without 200-SMA.")
                                 image_bytes = cached_symbol_chart(
-                                    edge_meta["last_session"], selected, open_frame, high, low, close, volume,
+                                    snapshot_identity(), selected, open_frame, high, low, close, volume,
                                     pivot=pivot, stop=stop)
                                 st.image(image_bytes, caption=f"{selected} · research only · unverified corporate actions")
                             except (ValueError, KeyError) as exc:
@@ -550,7 +548,7 @@ elif page == "Financial Evidence Review":
             if ranks is None:
                 st.warning("No leadership ranks available for evidence review.")
             else:
-                scored = cached_v1(ranks.copy())
+                scored = cached_v1(snapshot_identity(), ranks.copy())
                 financial_path = SNAPSHOT_DIR / "financial_records.csv"
                 financial_records = pd.read_csv(financial_path).to_dict("records") if financial_path.is_file() else []
                 st.warning("Select the reporting period end from the original company filings. No date is inferred.")

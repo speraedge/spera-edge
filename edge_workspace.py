@@ -9,6 +9,7 @@ import pandas as pd
 from edge_exports import numbered, export_section
 from edge_core.portfolio import position_size
 from edge_core.portfolio_risk import risk_budget
+from edge_core.stops import validate_stop_update
 from edge_core.trade_review import journal_quality
 from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
 from edge_core.decision_outcomes import decision_outcomes
@@ -132,6 +133,29 @@ def identity_owner(identity, allowed_emails):
     return hashlib.sha256((str(identity['iss']) + '\0' + str(identity['sub'])).encode()).hexdigest()
 
 
+def resolve_owner(st):
+    """Return (owner, status) while preserving existing fail-closed OIDC checks.
+
+    Status is one of CONFIGURATION_REQUIRED, LOGIN_REQUIRED, UNAUTHORIZED, OK.
+    The caller retains its own original messages and login/logout controls.
+    """
+    try:
+        allowed = st.secrets.get('EDGE_JOURNAL_ALLOWED_EMAILS', [])
+        auth_configured = 'auth' in st.secrets
+    except FileNotFoundError:
+        allowed, auth_configured = [], False
+    if isinstance(allowed, str):
+        allowed = [item.strip() for item in allowed.split(',')]
+    if not allowed or not auth_configured:
+        return None, 'CONFIGURATION_REQUIRED'
+    if not st.user.is_logged_in:
+        return None, 'LOGIN_REQUIRED'
+    try:
+        return identity_owner(dict(st.user), allowed), 'OK'
+    except ValueError:
+        return None, 'UNAUTHORIZED'
+
+
 def industry_participation(close, members):
     if not {'Symbol', 'Industry'}.issubset(members.columns) or members['Symbol'].duplicated().any() or members[['Symbol', 'Industry']].isna().any().any():
         raise ValueError('Unique official industry membership required')
@@ -240,7 +264,7 @@ class Ledger:
                         raise ValueError('Initial long protective stop must be below purchase price')
                     holding['quantity'] += int(quantity)
                     holding['cost'] += quantity * price + fee
-                    holding['stop'] = stop
+                    holding['stop'] = max(holding['stop'], stop) if holding['quantity'] > int(quantity) else stop
                 else:
                     if quantity > holding['quantity']:
                         raise ValueError('Exit exceeds recorded open quantity')
@@ -251,7 +275,7 @@ class Ledger:
             elif kind == 'STOP':
                 if holding['quantity'] <= 0 or stop <= 0:
                     raise ValueError('Stop update requires an open position and positive stop')
-                holding['stop'] = stop
+                holding['stop'] = validate_stop_update(holding['stop'], stop)
         rows = []
         for symbol, holding in holdings.items():
             quantity = holding['quantity']
@@ -421,23 +445,15 @@ def render_private_portfolio(close, snapshot_usable):
     import streamlit as st
     from edge_core.d1_store import d1_query
     st.caption('Private append-only trade accounting. Long positions only; entries record your actual fills and fees. No brokerage execution.')
-    try:
-        allowed = st.secrets.get('EDGE_JOURNAL_ALLOWED_EMAILS', [])
-        auth_configured = 'auth' in st.secrets
-    except FileNotFoundError:
-        allowed, auth_configured = [], False
-    if isinstance(allowed, str):
-        allowed = [item.strip() for item in allowed.split(',')]
-    if not allowed or not auth_configured:
+    owner, owner_status = resolve_owner(st)
+    if owner_status == 'CONFIGURATION_REQUIRED':
         st.warning('Private ledger locked: configure Streamlit OIDC auth and EDGE_JOURNAL_ALLOWED_EMAILS. No private records are loaded.')
         return
-    if not st.user.is_logged_in:
+    if owner_status == 'LOGIN_REQUIRED':
         if st.button('Sign in to private journal'):
             st.login()
         return
-    try:
-        owner = identity_owner(dict(st.user), allowed)
-    except ValueError:
+    if owner_status == 'UNAUTHORIZED':
         st.error('This identity is not authorized for the private ledger.')
         if st.button('Sign out'):
             st.logout()
