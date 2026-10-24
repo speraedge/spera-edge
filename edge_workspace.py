@@ -661,7 +661,9 @@ def render_private_portfolio(close, snapshot_usable):
             try:
                 if not snapshot_usable:
                     raise ValueError('Execution locked: stale snapshot')
-                if kind == 'BUY' and (sizing is None or quantity > sizing['quantity']):
+                if kind == 'BUY' and sizing is None:
+                    raise ValueError('BUY blocked: sizing and earnings clearance are required before recording.')
+                if kind == 'BUY' and quantity > sizing['quantity']:
                     raise ValueError('Entry exceeds permitted portfolio risk or exposure capacity')
                 ledger.append(kind, symbol, quantity=int(quantity), price=price, stop=stop, fee=fee, note=note, event_id=st.session_state['edge_event_id'], expected_revision=revision)
                 st.session_state['edge_event_id'] = str(uuid.uuid4())
