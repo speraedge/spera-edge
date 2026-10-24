@@ -59,9 +59,24 @@ class CandlestickChartTests(unittest.TestCase):
                                          self.close, self.volume, "AAA")
         self.assertTrue(raw.startswith(bytes.fromhex("89504e470d0a1a0a")))
 
+    def test_50_to_199_sessions_render_with_only_50_sma(self):
+        for count in (50, 60, 125, 199):
+            with self.subTest(count=count):
+                raw = self.render(bars=count)
+                self.assertTrue(raw.startswith(bytes.fromhex("89504e470d0a1a0a")))
+
+    def test_mismatched_open_dates_render_on_intersection(self):
+        # 260 close observations but only 100 usable open sessions.
+        open_gap = self.open_.iloc[-100:].copy()
+        raw = render_validated_ohlcv_png(open_gap, self.high, self.low,
+                                         self.close, self.volume, "AAA")
+        self.assertTrue(raw.startswith(bytes.fromhex("89504e470d0a1a0a")))
+
     def test_rejects_missing_history(self):
-        with self.assertRaises(ValueError):
-            self.render(bars=60)
+        with self.assertRaisesRegex(ValueError, "Insufficient aligned 50-session"):
+            self.render(bars=50, stop=None) if False else render_validated_ohlcv_png(
+                self.open_.iloc[-49:], self.high, self.low, self.close,
+                self.volume, "AAA")
 
 
 if __name__ == "__main__":
