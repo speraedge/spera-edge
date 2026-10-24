@@ -198,7 +198,7 @@ elif page == "Leadership Scanner":
         SNAPSHOT_DIR, Path(__file__).parent / "data" / "history",
         latest_date=edge_meta.get("last_session") if edge_meta else None)
     if ranks is not None:
-        st.info(f"Leadership research as of {leadership_date}" + (" (historical archive; not current trading signals)" if leadership_historical else ""))
+        st.info(f"Displaying leadership data from {leadership_date}" + (" — historical fallback; not current trading signals" if leadership_historical else " — current research snapshot"))
 
     if ranks is not None:
         try:
