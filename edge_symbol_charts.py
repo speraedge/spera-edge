@@ -16,8 +16,8 @@ def render_validated_ohlcv_png(open_, high, low, close, volume, symbol, bars=260
     import mplfinance as mpf
     if not isinstance(symbol, str) or not symbol:
         raise ValueError("Invalid symbol")
-    if not 60 <= int(bars) <= 500:
-        raise ValueError("Chart window must be 60–500 sessions")
+    if not 50 <= int(bars) <= 500:
+        raise ValueError("Chart window must be 50–500 sessions")
     frames = (("Open", open_), ("High", high), ("Low", low),
               ("Close", close), ("Volume", volume))
     if any(symbol not in frame.columns for _, frame in frames):
@@ -43,8 +43,8 @@ def render_validated_ohlcv_png(open_, high, low, close, volume, symbol, bars=260
     common = common.sort_values()
     data = pd.DataFrame({name: series.reindex(common) for name, series in cleaned.items()})
     data = data.dropna().tail(int(bars))
-    if len(data) < 200:
-        raise ValueError("Insufficient aligned 200-session OHLCV history")
+    if len(data) < 50:
+        raise ValueError("Insufficient aligned 50-session OHLCV history")
     if ((data["High"] < data[["Open", "Close", "Low"]].max(axis=1)) |
         (data["Low"] > data[["Open", "Close"]].min(axis=1)) |
         (data["Volume"] < 0)).any():
@@ -56,7 +56,8 @@ def render_validated_ohlcv_png(open_, high, low, close, volume, symbol, bars=260
             if not 0 < level < float("inf"):
                 raise ValueError("Invalid research level")
             levels.append(level)
-    kwargs = {"type": "candle", "volume": True, "mav": (50, 150, 200),
+    moving_averages = (50, 150, 200) if len(data) >= 200 else (50,)
+    kwargs = {"type": "candle", "volume": True, "mav": moving_averages,
               "style": "yahoo", "returnfig": True, "figsize": (12, 7),
               "title": f"{symbol} | OHLCV research only"}
     if levels:

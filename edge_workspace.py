@@ -337,22 +337,32 @@ def render_industries(directory, close):
         st.info('Current authoritative industry evidence unavailable. Archived sector rankings remain historical only.')
 
 
-def render_entries(close, high, low, volume, last_session):
+def render_entries(close, high, low, volume, last_session, *, leadership=None, leadership_date=None, leadership_historical=False):
     import streamlit as st
     st.subheader('Completed-session pivots and volume confirmation')
     table = entry_diagnostics(close, high, low, volume, last_session)
     st.caption('Pivot: highest high of 20 prior sessions; volume: at least 1.5× prior 50-session mean. Stop: prior 10-session low. VCP diagnostic: shrinking disjoint 20/10/5-session ranges, final range ≤8%. These are research heuristics, not certified SEPA signals. Gaps and slippage can exceed stop risk.')
-    from pathlib import Path
-    root = Path(__file__).parent / 'data' / 'latest'
-    rank_path = root / 'leadership.csv'
-    if not rank_path.is_file():
-        st.error('RS hard filter unavailable: leadership snapshot missing')
+    # Use the validated loader result passed from app.py, never a separate unverified file read.
+    ranks = leadership
+    rs_available = (
+        isinstance(ranks, pd.DataFrame)
+        and {'Symbol', 'RS_Universe_252D_Pctile'}.issubset(ranks.columns)
+        and not ranks['Symbol'].isna().any()
+        and not ranks['Symbol'].duplicated().any()
+        and not leadership_historical
+    )
+    if rs_available:
+        pct = pd.to_numeric(ranks['RS_Universe_252D_Pctile'], errors='coerce')
+        rs_available = pct.notna().any() and pct.between(0, 100).all()
+    if rs_available:
+        eligible_rs = set(ranks.loc[pct.ge(70), 'Symbol'])
+        st.caption(f'RS ≥70 verified against leadership research from {leadership_date}.')
+    else:
+        eligible_rs = set()
+        st.warning('RS hard filter unavailable: validated current 252-day RS percentile is missing or leadership is historical. No candidates qualify; unfiltered pivot/VCP diagnostics remain available below for research only.')
+        st.dataframe(numbered(table), use_container_width=True)
+        export_section('Unfiltered pivot diagnostics (RS unavailable)', table, 'unfiltered_entry_diagnostics')
         return table.iloc[0:0]
-    ranks = pd.read_csv(rank_path)
-    if not {'Symbol', 'RS_Universe_252D_Pctile'}.issubset(ranks.columns) or ranks['Symbol'].duplicated().any():
-        st.error('RS hard filter unavailable: valid percentile column required')
-        return table.iloc[0:0]
-    eligible_rs = set(ranks.loc[pd.to_numeric(ranks['RS_Universe_252D_Pctile'], errors='coerce').ge(70), 'Symbol'])
     from edge_core.indian_risk_gates import average_traded_value20, MIN_ADTV_RUPEES
     liquid_symbols = set()
     for sym in table['Symbol']:

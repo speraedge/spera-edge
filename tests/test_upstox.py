@@ -27,6 +27,26 @@ class UpstoxTests(unittest.TestCase):
         self.assertEqual(float(df.iloc[-1]["close"]), 102)
         self.assertIn("NSE_EQ%7CINE002A01018", session.url)
         self.assertEqual(session.headers["Authorization"], "Bearer test")
+    def test_long_history_is_chunked_without_overlapping_requests(self):
+        class EmptyResponse:
+            def raise_for_status(self):
+                pass
+            def json(self):
+                return {"status": "success", "data": {"candles": []}}
+        class RecordingSession:
+            def __init__(self):
+                self.urls = []
+            def get(self, url, headers, timeout):
+                self.urls.append(url)
+                return EmptyResponse()
+        session = RecordingSession()
+        frame = fetch_daily_candles("NSE_EQ|test", "2024-01-01", "2026-03-11",
+                                    token="test", session=session)
+        self.assertTrue(frame.empty)
+        self.assertEqual(len(session.urls), 3)
+        self.assertIn("/2024-12-15/2024-01-01", session.urls[0])
+        self.assertIn("/2025-11-30/2024-12-16", session.urls[1])
+
     def test_missing_token(self):
         with patch.dict("os.environ", {"UPSTOX_ACCESS_TOKEN": ""}):
             with self.assertRaises(UpstoxDataError):

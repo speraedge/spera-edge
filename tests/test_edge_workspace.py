@@ -5,6 +5,17 @@ from edge_workspace import entry_diagnostics, market_report, Ledger, plan_quanti
 
 
 class WorkspaceTests(unittest.TestCase):
+    def test_trade_desk_does_not_read_unvalidated_leadership_file(self):
+        from pathlib import Path
+        workspace = (Path(__file__).parents[1] / "edge_workspace.py").read_text()
+        app = (Path(__file__).parents[1] / "app.py").read_text()
+        entry = workspace.split("def render_entries(", 1)[1]
+        self.assertNotIn("pd.read_csv(rank_path)", entry)
+        self.assertIn("leadership_historical", entry)
+        self.assertIn("eligible_rs = set()", entry)
+        self.assertIn("Unfiltered pivot diagnostics (RS unavailable)", entry)
+        self.assertIn("leadership=trade_ranks", app)
+
     def test_current_industry_requires_dated_unique_membership(self):
         close, _, _, _ = self.candles()
         members = pd.DataFrame({'Symbol': ['ABC'], 'Industry': ['TEST']})
