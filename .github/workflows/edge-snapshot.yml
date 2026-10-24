@@ -84,15 +84,6 @@ jobs:
         run: python -m edge_evidence
       - name: Validate published membership and benchmark evidence
         run: python -m unittest discover -s tests -p 'test_published_evidence.py' -v
-      - name: Refresh verified BSE scrip mapping (weekly, fail closed on unavailable source)
-        run: |
-          if [ "$(date -u +%u)" = "6" ] || [ ! -s data/latest/bse_mapping.csv ]; then
-            python -m tools.build_bse_mapping || echo 'BSE_MAPPING_UNAVAILABLE: retaining previously verified mapping, no inferred codes'
-          fi
-      - name: Fetch public exchange fundamentals (no private D1 reads)
-        run: python -m edge_fundamentals
-      - name: Fail-closed public fundamentals privacy gate
-        run: python -c "from edge_core.fundamentals_privacy import validate_public_csv; validate_public_csv('data/latest/fundamentals_auto.csv')"
       - name: Publish validated leadership research to EDGE D1
         env:
           EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
@@ -119,8 +110,11 @@ jobs:
           # Fail closed if actual opening prices are absent or excluded from Git.
           test -s data/latest/open.csv || { echo "MISSING_OPEN_CSV"; exit 1; }
           git add -f data/latest/open.csv
-          python -c "from edge_core.fundamentals_privacy import validate_public_csv; validate_public_csv('data/latest/fundamentals_auto.csv')"
+          # Fundamentals are maintained by the local operator, not the nightly job.
+          # Never stage or overwrite fundamentals_auto.csv from nightly runs.
+          git restore --staged data/latest/fundamentals_auto.csv 2>/dev/null || true
           git add data/latest
+          git restore --staged data/latest/fundamentals_auto.csv 2>/dev/null || true
           git ls-files --error-unmatch data/latest/open.csv
           if ! git diff --cached --quiet; then
             git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
