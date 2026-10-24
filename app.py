@@ -476,6 +476,8 @@ elif page == "Trade Desk":
                                     aligned_dates = aligned_dates.intersection(chart_index)
                                 if any(len(index) != len(aligned_dates) for index in chart_indexes):
                                     st.warning(f"Chart OHLCV dates differ for {selected}; using {len(aligned_dates)} common sessions (50 required). Missing dates are excluded, not fabricated.")
+                                if 50 <= len(aligned_dates) < 200:
+                                    st.warning(f"Only {len(aligned_dates)} aligned OHLCV sessions for {selected}; chart displays 50-SMA without 200-SMA.")
                                 image_bytes = cached_symbol_chart(
                                     edge_meta["last_session"], selected, open_frame, high, low, close, volume,
                                     pivot=pivot, stop=stop)
