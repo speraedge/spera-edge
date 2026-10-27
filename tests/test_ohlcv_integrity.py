@@ -76,6 +76,20 @@ class OhlcvIntegrityTests(unittest.TestCase):
         result = audit_ohlcv(self.close, self.high, self.low, self.volume)
         self.assertEqual(result['verified_special_sessions'], ['2026-02-01'])
 
+    def test_morning_schedule_uses_prior_completed_weekday(self):
+        from edge_core.ohlcv_integrity import snapshot_is_fresh
+        # Tuesday morning expects Monday, Saturday morning expects Friday.
+        cases = [
+            ('2026-10-26', '2026-10-27T09:00:00+05:30', True),
+            ('2026-10-27', '2026-10-27T09:00:00+05:30', False),
+            ('2026-10-23', '2026-10-24T09:00:00+05:30', True),
+            ('2026-10-24', '2026-10-24T09:00:00+05:30', False),
+            ('2026-10-23', '2026-10-26T09:00:00+05:30', True),
+        ]
+        for session, now, expected in cases:
+            with self.subTest(session=session, now=now):
+                self.assertEqual(snapshot_is_fresh(session, pd.Timestamp(now)), expected)
+
     def test_snapshot_freshness_requires_latest_expected_completed_session(self):
         from edge_core.ohlcv_integrity import snapshot_is_fresh
         cases = [('2026-10-21', '2026-10-22T15:00:00+05:30', True),
