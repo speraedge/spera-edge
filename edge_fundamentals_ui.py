@@ -1,5 +1,6 @@
 """Trade Desk fundamentals: public baseline + private owner-scoped D1 overlay."""
 from pathlib import Path
+import json
 import pandas as pd
 import streamlit as st
 from edge_core.d1_store import d1_query
@@ -62,6 +63,20 @@ def render_fundamentals(root=Path("data/latest")):
     except Exception:
         st.error("Private fundamentals unavailable. No manual data was loaded.")
         return
+    st.subheader("Quarterly fundamental acceleration")
+    st.caption("Private Screener Excel evidence only. PASS requires three strictly increasing QoQ and YoY growth observations for both revenue and EPS. Not a standalone buy signal.")
+    try:
+        acceleration = query(
+            "SELECT latest_quarter,status,metrics_json FROM edge_fundamental_acceleration "
+            "WHERE owner_id=? AND symbol=?", (owner, symbol))
+        if acceleration:
+            record = acceleration[0]
+            st.write({"Quarter": record["latest_quarter"], "Fundamental Gate": record["status"]})
+            st.dataframe(pd.DataFrame(json.loads(record["metrics_json"])).T, use_container_width=True)
+        else:
+            st.info("Fundamental acceleration: INSUFFICIENT_HISTORY (no private Excel import).")
+    except Exception:
+        st.info("Fundamental acceleration unavailable. No PASS inferred.")
     st.caption("Your manual values are stored only in private D1. They are not exported, logged or cached.")
     merged = merge_in_memory(baseline, manual)
     st.dataframe(pd.DataFrame([merged]), hide_index=True, use_container_width=True)
