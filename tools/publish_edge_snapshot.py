@@ -104,7 +104,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     (staging/"metadata.json").write_text(json.dumps(metadata,indent=2))
     # Keep raw provider OHLCV available for diagnostics if validation fails.
     # This directory is diagnostic-only; never publish it to the trusted snapshot.
-    diagnostic = destination.parent / "phase2-open-diagnostic"
+    diagnostic = destination.parent / ("phase2-open-diagnostic" if destination.name == "latest" else destination.name + "-open-diagnostic")
     diagnostic.mkdir(parents=True, exist_ok=True)
     for name in ("open.csv", "close.csv", "metadata.json"):
         shutil.copy2(staging / name, diagnostic / name)
