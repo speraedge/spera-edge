@@ -54,7 +54,11 @@ st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
 st.caption("Independent NIFTY 500 research • Automatic snapshots when available • No brokerage execution")
 
-SNAPSHOT_DIR=Path(__file__).parent/"data"/"latest"
+data_source = st.radio("Data Source", ["Verified EOD", "Provisional Evening"], horizontal=True, key="edge_data_source")
+is_provisional = data_source == "Provisional Evening"
+SNAPSHOT_DIR = Path(__file__).parent / "data" / ("provisional" if is_provisional else "latest")
+if is_provisional:
+    st.warning("Warning: Provisional data. Do not execute trades based on this. Position Sizing and Journal are locked.")
 def snapshot_identity():
     metadata = SNAPSHOT_DIR / 'metadata.json'
     return hashlib.sha256(metadata.read_bytes()).hexdigest() if metadata.is_file() else 'MISSING_METADATA'
@@ -78,7 +82,7 @@ if edge_meta:
         last_session=pd.Timestamp(edge_meta["last_session"]).date()
         now_ist=datetime.now(ZoneInfo("Asia/Kolkata"))
         age=(now_ist.date()-last_session).days
-        snapshot_usable=snapshot_is_fresh(last_session, now_ist)
+        snapshot_usable=(not is_provisional) and snapshot_is_fresh(last_session, now_ist)
         if not snapshot_usable:
             st.info(f"Note: Displaying research data from {last_session.isoformat()}. Execution forms are locked until fresh price data is available.")
     except (ValueError,TypeError,KeyError):
@@ -442,7 +446,7 @@ elif page == "Trade Desk":
             st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
-                render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks, leadership_date=trade_rank_date, leadership_historical=trade_historical)
+                render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks, leadership_date=trade_rank_date, leadership_historical=trade_historical, data_source='provisional' if is_provisional else 'verified')
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(snapshot_identity(), close, volume, high, low)
@@ -528,7 +532,7 @@ elif page == "Trade Desk":
                 st.error(str(exc))
 elif page == "Portfolio & Journal":
     st.subheader("Portfolio & Journal")
-    render_private_portfolio(prices,snapshot_usable)
+    render_private_portfolio(prices,snapshot_usable, data_source='provisional' if is_provisional else 'verified')
 elif page == "Financial Evidence Review":
     st.caption("Owner-only financial intake. Research records are not certified.")
     membership_path = SNAPSHOT_DIR / "current_membership.csv"
