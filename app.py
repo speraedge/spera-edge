@@ -91,10 +91,16 @@ if edge_meta:
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
 
+if st.sidebar.button("Clear cached research and refresh", key="edge_clear_cache"):
+    st.cache_data.clear()
+    st.rerun()
+
 page = st.sidebar.radio("SPERA EDGE navigation", ["Market Pulse", "Leadership Scanner", "Trade Desk", "Portfolio & Journal", "Financial Evidence Review"], key="edge_active_page")
 prices = snapshot_table("close") if edge_meta and page in ("Market Pulse", "Portfolio & Journal") else None
 if page == "Market Pulse":
     st.subheader("Market Pulse")
+    latest_coverage = int(prices.notna().any(axis=0).sum()) if prices is not None else 0
+    st.caption(f"Snapshot date: {edge_meta.get('last_session', 'unavailable') if edge_meta else 'unavailable'} | latest_coverage: {latest_coverage} | Metadata SHA-256: {snapshot_identity()[:12]}")
     if prices is not None:
         render_market(prices)
         st.subheader("Breakout health (research-only)")
