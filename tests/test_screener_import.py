@@ -65,6 +65,23 @@ class ScreenerImportTests(unittest.TestCase):
             self.assertEqual(params[1], "ABC")
         self.assertFalse(any("data/latest" in sql or "public" in sql.lower() for sql, _ in calls))
 
+    def test_reimport_same_company_quarter_uses_upsert(self):
+        calls = []
+        def query(sql, params=()):
+            calls.append((sql, params))
+            return []
+        path = self.make_book()
+        import_workbook(path, "ABC", OWNER, query=query)
+        import_workbook(path, "ABC", OWNER, query=query)
+        writes = [(sql, params) for sql, params in calls if "INSERT INTO edge_screener_quarters" in sql]
+        self.assertEqual(len(writes), 16)
+        self.assertEqual(len({(params[0], params[1], params[2]) for _, params in writes}), 8)
+        self.assertTrue(all("ON CONFLICT(owner_id,symbol,quarter_end)" in sql and
+                            "DO UPDATE" in sql for sql, _ in writes))
+        summaries = [sql for sql, _ in calls if "INSERT INTO edge_fundamental_acceleration" in sql]
+        self.assertEqual(len(summaries), 2)
+        self.assertTrue(all("ON CONFLICT(owner_id,symbol)" in sql for sql in summaries))
+
     def test_nonpositive_eps_base_never_passes(self):
         rows = [{"quarter_end": str(x.date()), "revenue": 100 + i * 10, "eps": -1 if i == 3 else 2 + i}
                 for i, x in enumerate(pd.date_range("2024-03-31", periods=8, freq="QE-MAR"))]
