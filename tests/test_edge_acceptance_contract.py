@@ -28,8 +28,8 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         )
         offsets = [workflow.index(step) for step in steps]
         self.assertEqual(offsets, sorted(offsets))
-        self.assertNotIn("30 3 * * 2-6", workflow)
-        self.assertIn("0 17 * * 1-5", workflow)
+        self.assertIn("30 3 * * 2-6", workflow)
+        self.assertNotIn("0 17 * * 1-5", workflow)
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("for attempt in 1 2; do", workflow)
         self.assertIn("sleep 1800", workflow)
