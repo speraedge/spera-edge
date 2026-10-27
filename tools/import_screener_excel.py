@@ -17,6 +17,10 @@ QUARTERLY_SQL = """CREATE TABLE IF NOT EXISTS edge_screener_quarters (
  owner_id TEXT NOT NULL, symbol TEXT NOT NULL, quarter_end TEXT NOT NULL,
  revenue REAL NOT NULL, eps REAL NOT NULL, source TEXT NOT NULL,
  imported_utc TEXT NOT NULL, PRIMARY KEY(owner_id,symbol,quarter_end))"""
+PAT_SQL = """CREATE TABLE IF NOT EXISTS edge_screener_quarter_pat (
+ owner_id TEXT NOT NULL, symbol TEXT NOT NULL, quarter_end TEXT NOT NULL,
+ revenue REAL NOT NULL, net_profit REAL, source TEXT NOT NULL,
+ imported_utc TEXT NOT NULL, PRIMARY KEY(owner_id,symbol,quarter_end))"""
 GATE_SQL = """CREATE TABLE IF NOT EXISTS edge_fundamental_acceleration (
  owner_id TEXT NOT NULL, symbol TEXT NOT NULL, latest_quarter TEXT NOT NULL,
  status TEXT NOT NULL, metrics_json TEXT NOT NULL, updated_utc TEXT NOT NULL,
@@ -178,14 +182,24 @@ def import_workbook(path, symbol, owner, *, query=d1_query, sheet=None, dry_run=
     # Complete validation before any D1 write. Each quarter is owner-scoped.
     query(QUARTERLY_SQL)
     query(GATE_SQL)
+    query(PAT_SQL)
     stamp = datetime.now(timezone.utc).isoformat()
     for row in rows:
-        query("""INSERT INTO edge_screener_quarters
-                 (owner_id,symbol,quarter_end,revenue,eps,source,imported_utc)
+        query("""INSERT INTO edge_screener_quarter_pat
+                 (owner_id,symbol,quarter_end,revenue,net_profit,source,imported_utc)
                  VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,symbol,quarter_end)
-                 DO UPDATE SET revenue=excluded.revenue,eps=excluded.eps,
+                 DO UPDATE SET revenue=excluded.revenue,net_profit=excluded.net_profit,
                    source=excluded.source,imported_utc=excluded.imported_utc""",
-              (owner, symbol, row["quarter_end"], row["revenue"], row["eps"], "SCREENER_MANUAL_EXCEL", stamp))
+              (owner, symbol, row["quarter_end"], row["revenue"],
+               row.get("net_profit"), "SCREENER_MANUAL_EXCEL", stamp))
+        if row["eps"] is not None:
+            query("""INSERT INTO edge_screener_quarters
+                     (owner_id,symbol,quarter_end,revenue,eps,source,imported_utc)
+                     VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,symbol,quarter_end)
+                     DO UPDATE SET revenue=excluded.revenue,eps=excluded.eps,
+                       source=excluded.source,imported_utc=excluded.imported_utc""",
+                  (owner, symbol, row["quarter_end"], row["revenue"], row["eps"],
+                   "SCREENER_MANUAL_EXCEL", stamp))
     query("""INSERT INTO edge_fundamental_acceleration
              (owner_id,symbol,latest_quarter,status,metrics_json,updated_utc)
              VALUES(?,?,?,?,?,?) ON CONFLICT(owner_id,symbol) DO UPDATE SET
