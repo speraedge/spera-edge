@@ -70,6 +70,26 @@ class OhlcvIntegrityTests(unittest.TestCase):
             self.check()
 
 
+    def test_snapshot_builder_filters_phantom_weekend_but_keeps_special_session(self):
+        from tools.publish_edge_snapshot import drop_unverified_weekend_rows
+        frame = pd.DataFrame({"close": [100., 101., 102., 103.]},
+                             index=pd.to_datetime(["2026-01-30", "2026-02-01",
+                                                   "2026-10-25", "2026-10-26"]))
+        with self.assertLogs(level="WARNING") as logs:
+            clean = drop_unverified_weekend_rows(frame, symbol="AAA")
+        self.assertEqual(list(clean.index.strftime("%Y-%m-%d")),
+                         ["2026-01-30", "2026-02-01", "2026-10-26"])
+        self.assertIn("2026-10-25", logs.output[0])
+        self.assertEqual(frame.shape[0], 4)
+
+    def test_snapshot_builder_all_weekend_rows_filtered(self):
+        from tools.publish_edge_snapshot import drop_unverified_weekend_rows
+        frame = pd.DataFrame({"close": [100.]},
+                             index=pd.to_datetime(["2026-10-25"]))
+        with self.assertLogs(level="WARNING"):
+            clean = drop_unverified_weekend_rows(frame)
+        self.assertTrue(clean.empty)
+
     def test_official_budget_session_is_not_discarded(self):
         for frame in (self.close, self.high, self.low, self.volume):
             frame.index = pd.to_datetime(['2026-01-30', '2026-02-01'])
