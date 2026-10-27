@@ -75,18 +75,15 @@ def parse_screener_excel(path, *, sheet=None):
     book = pd.ExcelFile(path, engine="openpyxl")
     selected = sheet or next((name for name in book.sheet_names if name.strip().lower()
                               == "data sheet"), None)
-    if selected is None:
-        selected = next((name for name in book.sheet_names if name.strip().lower() in
-                         ("quarters", "quarterly results", "quarterly")), None)
     if selected is None or selected not in book.sheet_names:
         raise ValueError("Quarterly Data Sheet not found")
-    raw = pd.read_excel(book, sheet_name=selected, header=None)
+    raw = pd.read_excel(book, sheet_name=selected, header=None, engine="openpyxl")
     candidates = []
     for idx in range(len(raw)):
         label = str(raw.iat[idx, 0]).strip().lower()
         if selected.strip().lower() == "data sheet" and label != "report date":
             continue
-        dates = [(col, _quarter(raw.iat[idx, col])) for col in range(1, raw.shape[1])]
+        dates = [(col, _quarter(raw.iat[idx, col])) for col in range(1, min(raw.shape[1], 11))]
         dates = [(col, date) for col, date in dates if date is not None]
         if len(dates) >= 6:
             candidates.append((idx, dates))
@@ -115,12 +112,14 @@ def parse_screener_excel(path, *, sheet=None):
         raise ValueError("Exactly one Sales/Revenue row required")
     if len(labels.get("eps", [])) > 1 or len(labels.get("net_profit", [])) > 1:
         raise ValueError("Ambiguous EPS or Net profit row")
-    if not labels.get("eps") and not labels.get("net_profit"):
-        raise ValueError("Neither EPS nor Net profit found")
+    if len(labels.get("net_profit", [])) != 1:
+        raise ValueError("Exactly one Net profit row required")
     rows = []
     for col, date in dates:
         revenue = _number(raw.iat[labels["revenue"][0], col])
-        eps = _number(raw.iat[labels["eps"][0], col]) if labels.get("eps") and not pd.isna(raw.iat[labels["eps"][0], col]) else None
+        eps_cell = raw.iat[labels["eps"][0], col] if labels.get("eps") else None
+        # Formula cells without cached values are NaN; never infer EPS from PAT.
+        eps = None if eps_cell is None or pd.isna(eps_cell) or str(eps_cell).lstrip().startswith("=") else _number(eps_cell)
         pat = _number(raw.iat[labels["net_profit"][0], col]) if labels.get("net_profit") else None
         if revenue < 0:
             raise ValueError("Quarterly revenue cannot be negative")
@@ -192,7 +191,10 @@ def import_workbook(path, symbol, owner, *, query=d1_query, sheet=None, dry_run=
                    source=excluded.source,imported_utc=excluded.imported_utc""",
               (owner, symbol, row["quarter_end"], row["revenue"],
                row.get("net_profit"), "SCREENER_MANUAL_EXCEL", stamp))
-        if row["eps"] is not None:
+        if row["eps"] is None:
+            query("DELETE FROM edge_screener_quarters WHERE owner_id=? AND symbol=? AND quarter_end=?",
+                  (owner, symbol, row["quarter_end"]))
+        else:
             query("""INSERT INTO edge_screener_quarters
                      (owner_id,symbol,quarter_end,revenue,eps,source,imported_utc)
                      VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,symbol,quarter_end)

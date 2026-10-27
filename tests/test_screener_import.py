@@ -19,16 +19,15 @@ class ScreenerImportTests(unittest.TestCase):
         headers = [p.strftime("%b %Y") for p in periods]
         if duplicate:
             headers[-1] = headers[-2]
-        data = [
-            ["Quarterly Results"] + [None] * 8,
-            ["Particulars"] + headers,
-            ["Sales +"] + [100, 110, 125, 145, 170, 205, 250, 310],
-            ["EPS in Rs"] + [2, 3, 4, 5, 7, 11, 18, 30],
-        ]
+        data = [[None] * 9 for _ in range(51)]
+        data[40] = ["Report Date"] + headers
+        data[41] = ["Sales"] + [100, 110, 125, 145, 170, 205, 250, 310]
+        data[48] = ["Net profit"] + [10, 12, 14, 17, 21, 26, 33, 42]
+        data[49] = ["EPS"] + [2, 3, 4, 5, 7, 11, 18, 30]
         if missing:
-            data[-1][-1] = None
+            data[49][-1] = None
         with pd.ExcelWriter(path) as writer:
-            pd.DataFrame(data).to_excel(writer, sheet_name="Quarters", header=False, index=False)
+            pd.DataFrame(data).to_excel(writer, sheet_name="Data Sheet", header=False, index=False)
         return path
 
     def test_growth_acceleration_pass(self):
@@ -137,6 +136,29 @@ class ScreenerImportTests(unittest.TestCase):
             self.assertEqual(report["status"], "REVIEW_MISSING_EPS")
             self.assertEqual(sum("INSERT INTO edge_screener_quarter_pat" in sql for sql, _ in calls), 8)
             self.assertEqual(sum("INSERT INTO edge_screener_quarters" in sql for sql, _ in calls), 0)
+
+    def test_formula_eps_is_missing_and_stale_record_removed(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "FEDERALBNK.xlsx"
+            dates = pd.date_range("2024-03-31", periods=8, freq="QE-MAR")
+            data = [[None] * 9 for _ in range(51)]
+            data[40] = ["Report Date"] + list(dates.to_pydatetime())
+            data[41] = ["Sales"] + [100, 110, 125, 145, 170, 205, 250, 310]
+            data[48] = ["Net profit"] + [10, 12, 14, 17, 21, 26, 33, 42]
+            data[49] = ["EPS"] + ["=IF(B49>0,1,0)"] * 8
+            with pd.ExcelWriter(path) as writer:
+                pd.DataFrame(data).to_excel(writer, sheet_name="Data Sheet",
+                                            header=False, index=False)
+            rows = parse_screener_excel(path)
+            self.assertTrue(all(row["eps"] is None for row in rows))
+            calls = []
+            def query(sql, params=()):
+                calls.append((sql, params))
+                return []
+            result = import_workbook(path, "FEDERALBNK", OWNER, query=query)
+            self.assertEqual(result["status"], "REVIEW_MISSING_EPS")
+            self.assertEqual(sum("DELETE FROM edge_screener_quarters" in sql for sql, _ in calls), 8)
+            self.assertEqual(sum("INSERT INTO edge_screener_quarter_pat" in sql for sql, _ in calls), 8)
 
     def test_manufacturing_data_sheet_uses_explicit_eps(self):
         with tempfile.TemporaryDirectory() as folder:
