@@ -1,0 +1,52 @@
+name: NIFTY 500 provisional evening research
+on:
+  workflow_dispatch:
+  schedule:
+    # 19:00 IST Monday-Friday, 13:30 UTC. Weekend specials require manual dispatch.
+    - cron: '30 13 * * 1-5'
+permissions:
+  contents: write
+concurrency:
+  group: edge-provisional-evening
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements.txt
+      - name: Build isolated provisional research
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
+        run: python -m tools.publish_edge_provisional
+      - name: Validate provisional snapshot
+        run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot('data/provisional'))"
+      - name: Commit only provisional research files
+        run: |
+          set -euo pipefail
+          branch="${GITHUB_REF_NAME}"
+          test "$branch" != HEAD
+          test -s data/provisional/metadata.json
+          git config user.name "spera-edge-bot"
+          git config user.email "spera-edge-bot@users.noreply.github.com"
+          git add -f data/provisional/open.csv
+          git add -f data/provisional/close.csv data/provisional/high.csv data/provisional/low.csv data/provisional/volume.csv
+          git add -f data/provisional/leadership.csv data/provisional/metadata.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "data: provisional evening research [skip ci]"
+          git fetch origin "$branch"
+          git rebase "origin/$branch"
+          git push origin "HEAD:$branch"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: provisional-evening-diagnostics
+          path: data/provisional/
+          if-no-files-found: ignore
+          retention-days: 7
