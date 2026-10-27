@@ -54,7 +54,11 @@ st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
 st.caption("Independent NIFTY 500 research • Automatic snapshots when available • No brokerage execution")
 
-SNAPSHOT_DIR=Path(__file__).parent/"data"/"latest"
+data_source = st.radio("Data Source", ["Verified EOD", "Provisional Evening"], horizontal=True, key="edge_data_source")
+is_provisional = data_source == "Provisional Evening"
+SNAPSHOT_DIR = Path(__file__).parent / "data" / ("provisional" if is_provisional else "latest")
+if is_provisional:
+    st.warning("Warning: Provisional data. Do not execute trades based on this. Position Sizing and Journal are locked.")
 def snapshot_identity():
     metadata = SNAPSHOT_DIR / 'metadata.json'
     return hashlib.sha256(metadata.read_bytes()).hexdigest() if metadata.is_file() else 'MISSING_METADATA'
@@ -78,7 +82,7 @@ if edge_meta:
         last_session=pd.Timestamp(edge_meta["last_session"]).date()
         now_ist=datetime.now(ZoneInfo("Asia/Kolkata"))
         age=(now_ist.date()-last_session).days
-        snapshot_usable=snapshot_is_fresh(last_session, now_ist)
+        snapshot_usable=(not is_provisional) and snapshot_is_fresh(last_session, now_ist)
         if not snapshot_usable:
             st.info(f"Note: Displaying research data from {last_session.isoformat()}. Execution forms are locked until fresh price data is available.")
     except (ValueError,TypeError,KeyError):
@@ -344,84 +348,87 @@ elif page == "Leadership Scanner":
         export_section("Price template diagnostics", stage2_records, "price_template")
         st.caption("Stage 2 relative-strength requirement must be verified separately. Price-only pass is not full Stage 2 qualification.")
 elif page == "Trade Desk":
-    from edge_fundamentals_ui import render_fundamentals
-    render_fundamentals(SNAPSHOT_DIR)
-    st.subheader("Trade Desk")
-    from edge_core.saved_trade_plans import OwnerPlanStore, evaluate_plans, status
-    from edge_core.d1_store import d1_query
-    st.subheader("Saved Trade Plans")
-    st.caption("Private D1-backed research plans. Login required. Invalidated plans are retained in owner-scoped D1 audit history.")
-    desk_close = snapshot_table("close") if edge_meta else None
-    last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
-    plan_store = None
-    try:
-        owner, owner_status = resolve_owner(st)
-        if owner_status == "CONFIGURATION_REQUIRED":
-            st.warning("Saved plans locked: owner authentication not configured.")
-        elif owner_status == "LOGIN_REQUIRED":
-            if st.button("Sign in to saved plans", key="plans_sign_in"):
-                st.login()
-        elif owner_status == "UNAUTHORIZED":
-            raise ValueError("A verified, allowlisted OIDC identity is required")
-        else:
-            keys = ("EDGE_CF_ACCOUNT_ID", "EDGE_D1_DATABASE_ID", "EDGE_CF_API_TOKEN")
-            creds = [st.secrets.get(k) for k in keys]
-            if not all(creds):
-                raise ValueError("D1 credentials missing")
-            def plan_query(sql, params=()):
-                return d1_query(sql, params, account_id=creds[0], database_id=creds[1], token=creds[2])
-            plan_store = OwnerPlanStore(owner, plan_query)
-            plan_store.initialize()
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        st.warning(f"Private saved plans unavailable: {exc}")
-    if plan_store is not None:
+    if is_provisional:
+        st.info("Provisional Trade Desk is read-only. Fundamentals intake, saved-plan updates and D1 writes are disabled.")
+    else:
+        from edge_fundamentals_ui import render_fundamentals
+        render_fundamentals(SNAPSHOT_DIR)
+        st.subheader("Trade Desk")
+        from edge_core.saved_trade_plans import OwnerPlanStore, evaluate_plans, status
+        from edge_core.d1_store import d1_query
+        st.subheader("Saved Trade Plans")
+        st.caption("Private D1-backed research plans. Login required. Invalidated plans are retained in owner-scoped D1 audit history.")
+        desk_close = snapshot_table("close") if edge_meta else None
+        last_prices = desk_close.iloc[-1].to_dict() if desk_close is not None and not desk_close.empty else {}
+        plan_store = None
         try:
-            saved = plan_store.list_active()
-            for plan in saved:
-                if status(plan, last_prices.get(plan["Symbol"])) == "INVALID":
-                    plan_store.invalidate(plan["plan_id"])
-            active = plan_store.list_active()
-            evaluated = evaluate_plans(active, last_prices)
-            if evaluated:
-                st.dataframe(pd.DataFrame(evaluated), use_container_width=True, hide_index=True)
-                for i, plan in enumerate(evaluated):
-                    cols = st.columns([3, 1, 1])
-                    cols[0].write(f"{plan['Symbol']} · {plan['Setup Date']} · {plan['Status']}")
-                    if cols[1].button("Load Plan", key=f"load_plan_{i}"):
-                        st.session_state["saved_plan_selected"] = plan_store.load_active(plan["plan_id"])
-                        st.rerun()
-                    if plan["Status"] == "TRIGGERED":
-                        if cols[2].button("Calculate Size", key=f"size_plan_{i}", disabled=not snapshot_usable):
-                            st.session_state["saved_plan_selected"] = plan_store.load_active(plan["plan_id"])
-                            st.session_state["saved_plan_size_requested"] = True
-                            st.rerun()
+            owner, owner_status = resolve_owner(st)
+            if owner_status == "CONFIGURATION_REQUIRED":
+                st.warning("Saved plans locked: owner authentication not configured.")
+            elif owner_status == "LOGIN_REQUIRED":
+                if st.button("Sign in to saved plans", key="plans_sign_in"):
+                    st.login()
+            elif owner_status == "UNAUTHORIZED":
+                raise ValueError("A verified, allowlisted OIDC identity is required")
             else:
-                st.info("No active saved plans.")
-            selected_plan = st.session_state.get("saved_plan_selected")
-            if selected_plan:
-                # Recheck ownership and ACTIVE status every rerun; never trust session state as authority.
-                try:
-                    selected_plan = plan_store.load_active(selected_plan["plan_id"])
-                    st.session_state["saved_plan_selected"] = selected_plan
-                    st.write({"Loaded research plan": selected_plan})
-                    if st.session_state.pop("saved_plan_size_requested", False):
-                        st.info("Review the loaded entry and stop in Portfolio & Journal. Sizing remains locked when the snapshot is stale.")
-                except (KeyError, ValueError):
-                    st.session_state.pop("saved_plan_selected", None)
-            with st.form("save_trade_plan"):
-                plan_symbol = st.text_input("Plan symbol", key="plan_symbol")
-                plan_pivot = st.number_input("Pivot / entry", min_value=0.01, value=100.0, key="plan_pivot")
-                plan_stop = st.number_input("Initial stop", min_value=0.01, value=95.0, key="plan_stop")
-                plan_target = st.number_input("Target", min_value=0.01, value=115.0, key="plan_target")
-                plan_date = st.date_input("Setup date", key="plan_date")
-                plan_submit = st.form_submit_button("Save Plan")
-            if plan_submit:
-                plan_store.add({"Symbol": plan_symbol, "Pivot": plan_pivot, "Stop": plan_stop,
-                                "Target": plan_target, "Setup Date": plan_date.isoformat()})
-                st.success("Private plan saved to D1.")
-                st.rerun()
+                keys = ("EDGE_CF_ACCOUNT_ID", "EDGE_D1_DATABASE_ID", "EDGE_CF_API_TOKEN")
+                creds = [st.secrets.get(k) for k in keys]
+                if not all(creds):
+                    raise ValueError("D1 credentials missing")
+                def plan_query(sql, params=()):
+                    return d1_query(sql, params, account_id=creds[0], database_id=creds[1], token=creds[2])
+                plan_store = OwnerPlanStore(owner, plan_query)
+                plan_store.initialize()
         except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-            st.warning(f"Saved plans unavailable: {exc}")
+            st.warning(f"Private saved plans unavailable: {exc}")
+        if plan_store is not None:
+            try:
+                saved = plan_store.list_active()
+                for plan in saved:
+                    if status(plan, last_prices.get(plan["Symbol"])) == "INVALID":
+                        plan_store.invalidate(plan["plan_id"])
+                active = plan_store.list_active()
+                evaluated = evaluate_plans(active, last_prices)
+                if evaluated:
+                    st.dataframe(pd.DataFrame(evaluated), use_container_width=True, hide_index=True)
+                    for i, plan in enumerate(evaluated):
+                        cols = st.columns([3, 1, 1])
+                        cols[0].write(f"{plan['Symbol']} · {plan['Setup Date']} · {plan['Status']}")
+                        if cols[1].button("Load Plan", key=f"load_plan_{i}"):
+                            st.session_state["saved_plan_selected"] = plan_store.load_active(plan["plan_id"])
+                            st.rerun()
+                        if plan["Status"] == "TRIGGERED":
+                            if cols[2].button("Calculate Size", key=f"size_plan_{i}", disabled=not snapshot_usable):
+                                st.session_state["saved_plan_selected"] = plan_store.load_active(plan["plan_id"])
+                                st.session_state["saved_plan_size_requested"] = True
+                                st.rerun()
+                else:
+                    st.info("No active saved plans.")
+                selected_plan = st.session_state.get("saved_plan_selected")
+                if selected_plan:
+                    # Recheck ownership and ACTIVE status every rerun; never trust session state as authority.
+                    try:
+                        selected_plan = plan_store.load_active(selected_plan["plan_id"])
+                        st.session_state["saved_plan_selected"] = selected_plan
+                        st.write({"Loaded research plan": selected_plan})
+                        if st.session_state.pop("saved_plan_size_requested", False):
+                            st.info("Review the loaded entry and stop in Portfolio & Journal. Sizing remains locked when the snapshot is stale.")
+                    except (KeyError, ValueError):
+                        st.session_state.pop("saved_plan_selected", None)
+                with st.form("save_trade_plan"):
+                    plan_symbol = st.text_input("Plan symbol", key="plan_symbol")
+                    plan_pivot = st.number_input("Pivot / entry", min_value=0.01, value=100.0, key="plan_pivot")
+                    plan_stop = st.number_input("Initial stop", min_value=0.01, value=95.0, key="plan_stop")
+                    plan_target = st.number_input("Target", min_value=0.01, value=115.0, key="plan_target")
+                    plan_date = st.date_input("Setup date", key="plan_date")
+                    plan_submit = st.form_submit_button("Save Plan")
+                if plan_submit:
+                    plan_store.add({"Symbol": plan_symbol, "Pivot": plan_pivot, "Stop": plan_stop,
+                                    "Target": plan_target, "Setup Date": plan_date.isoformat()})
+                    st.success("Private plan saved to D1.")
+                    st.rerun()
+            except (ValueError, KeyError, TypeError, RuntimeError) as exc:
+                st.warning(f"Saved plans unavailable: {exc}")
     trade_ranks, trade_rank_date, trade_historical = load_leadership(
         SNAPSHOT_DIR, Path(__file__).parent / "data" / "history",
         latest_date=edge_meta.get("last_session") if edge_meta else None)
@@ -442,7 +449,7 @@ elif page == "Trade Desk":
             st.info("Waiting for the automated OHLCV snapshot. No manual upload required.")
         if all(x is not None for x in (close,high,low,volume)):
             try:
-                render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks, leadership_date=trade_rank_date, leadership_historical=trade_historical)
+                render_entries(close,high,low,volume,edge_meta["last_session"], leadership=trade_ranks, leadership_date=trade_rank_date, leadership_historical=trade_historical, data_source='provisional' if is_provisional else 'verified')
                 coverage=setup_scanner_coverage(close,volume,high,low)
                 st.json(coverage)
                 candidates=cached_setups(snapshot_identity(), close, volume, high, low)
@@ -515,7 +522,7 @@ elif page == "Trade Desk":
                 membership_file = SNAPSHOT_DIR / "current_membership.csv"
                 provenance_file = SNAPSHOT_DIR / "evidence.json"
                 leadership_frame = snapshot_table("leadership")
-                if membership_file.is_file() and provenance_file.is_file() and leadership_frame is not None:
+                if not is_provisional and membership_file.is_file() and provenance_file.is_file() and leadership_frame is not None:
                     provenance = json.loads(provenance_file.read_text())
                     if provenance.get("membership_sha256") == hashlib.sha256(membership_file.read_bytes()).hexdigest() and provenance.get("membership_source"):
                         members = pd.read_csv(membership_file, dtype={"ISIN Code": str})
@@ -528,7 +535,7 @@ elif page == "Trade Desk":
                 st.error(str(exc))
 elif page == "Portfolio & Journal":
     st.subheader("Portfolio & Journal")
-    render_private_portfolio(prices,snapshot_usable)
+    render_private_portfolio(prices,snapshot_usable, data_source='provisional' if is_provisional else 'verified')
 elif page == "Financial Evidence Review":
     st.caption("Owner-only financial intake. Research records are not certified.")
     membership_path = SNAPSHOT_DIR / "current_membership.csv"

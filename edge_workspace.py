@@ -361,7 +361,7 @@ def render_industries(directory, close):
         st.info('Current authoritative industry evidence unavailable. Archived sector rankings remain historical only.')
 
 
-def render_entries(close, high, low, volume, last_session, *, leadership=None, leadership_date=None, leadership_historical=False):
+def render_entries(close, high, low, volume, last_session, *, leadership=None, leadership_date=None, leadership_historical=False, data_source='verified'):
     import streamlit as st
     st.subheader('Completed-session pivots and volume confirmation')
     table = entry_diagnostics(close, high, low, volume, last_session)
@@ -407,6 +407,9 @@ def render_entries(close, high, low, volume, last_session, *, leadership=None, l
     defensive = market_report(close)['condition'] == 'DEFENSIVE'
     if defensive:
         st.error('DEFENSIVE MARKET REGIME — sizing disabled. Candidate research remains visible.')
+    if data_source == 'provisional':
+        st.warning('Warning: Provisional data. Do not execute trades based on this. Position sizing is locked.')
+        return table
     st.subheader('Risk-based position plan')
     st.caption('Planning inputs only. Enter actual account equity, total marked exposure and total open mark-to-stop risk. Private ledger totals are available after sign-in on Portfolio & Journal.')
     equity = st.number_input('Planning equity (INR)', min_value=1.0, value=500000.0)
@@ -441,8 +444,11 @@ def render_entries(close, high, low, volume, last_session, *, leadership=None, l
     return table
 
 
-def render_private_portfolio(close, snapshot_usable):
+def render_private_portfolio(close, snapshot_usable, *, data_source='verified'):
     import streamlit as st
+    if data_source == 'provisional':
+        st.warning('Warning: Provisional data. Do not execute trades based on this. Position sizing and journal are locked.')
+        return
     from edge_core.d1_store import d1_query
     st.caption('Private append-only trade accounting. Long positions only; entries record your actual fills and fees. No brokerage execution.')
     owner, owner_status = resolve_owner(st)
