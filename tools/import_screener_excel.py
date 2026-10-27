@@ -32,9 +32,11 @@ def _quarter(value):
         if not DATE_PATTERN.fullmatch(text):
             return None
         try:
-            d = pd.to_datetime(text, dayfirst=not text[:4].isdigit()).date()
-            if re.fullmatch(r"[A-Za-z]{3}[- ]?\\d{2,4}", text):
-                d = (pd.Timestamp(d) + pd.offsets.MonthEnd(0)).date()
+            if re.fullmatch(r"[A-Za-z]{3}[- ]?[0-9]{4}", text):
+                normalized = text.replace("-", " ")
+                d = (pd.Timestamp(datetime.strptime(normalized, "%b %Y")) + pd.offsets.MonthEnd(0)).date()
+            else:
+                d = pd.to_datetime(text, dayfirst=not text[:4].isdigit()).date()
         except (ValueError, TypeError):
             return None
     if d.month not in (3, 6, 9, 12) or d.day not in (30, 31):
