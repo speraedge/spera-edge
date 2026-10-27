@@ -23,7 +23,7 @@ class ScreenerImportTests(unittest.TestCase):
             ["Quarterly Results"] + [None] * 8,
             ["Particulars"] + headers,
             ["Sales +"] + [100, 110, 125, 145, 170, 205, 250, 310],
-            ["EPS in Rs"] + [2, 3, 4, 5, 7, 10, 15, 22],
+            ["EPS in Rs"] + [2, 3, 4, 5, 7, 11, 18, 30],
         ]
         if missing:
             data[-1][-1] = None
