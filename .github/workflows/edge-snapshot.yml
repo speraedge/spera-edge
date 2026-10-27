@@ -12,7 +12,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,8 +27,8 @@ jobs:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
         run: |
           set -uo pipefail
-          for attempt in 1 2; do
-            echo "Snapshot attempt $attempt/2"
+          for attempt in 1 2 3; do
+            echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Snapshot attempt $attempt/3; Upstox fetch START"
             log_file="$(mktemp)"
             # Retry both build-time and post-build freshness failures.
             if (python -m tools.publish_edge_snapshot && python - <<'PY'
@@ -45,7 +45,7 @@ jobs:
             ) >"$log_file" 2>&1; then
               cat "$log_file"
               rm -f "$log_file"
-              echo "Fresh snapshot obtained on attempt $attempt"
+              echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Upstox fetch and freshness validation END; fresh snapshot obtained on attempt $attempt"
               break
             fi
             cat "$log_file"
@@ -55,12 +55,12 @@ jobs:
               exit 1
             fi
             rm -f "$log_file"
-            if [ "$attempt" -eq 2 ]; then
+            if [ "$attempt" -eq 3 ]; then
               echo "STALE_PROVIDER_SNAPSHOT: exhausted two attempts; no publication"
               exit 1
             fi
-            echo "STALE_PROVIDER_SNAPSHOT: waiting 30 minutes before single retry"
-            sleep 1800
+            echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] STALE_PROVIDER_SNAPSHOT: waiting 60 seconds before retry"
+            sleep 60
           done
       - name: Validate complete snapshot files and metadata
         run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
@@ -89,13 +89,19 @@ jobs:
           EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
           EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
           EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
-        run: python -m tools.publish_edge_d1
+        run: |
+          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 leadership publication START"
+          python -m tools.publish_edge_d1
+          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 leadership publication END"
       - name: Verify immutable snapshot manifest in independent EDGE D1
         env:
           EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
           EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
           EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
-        run: python -m tools.edge_snapshot_publication --directory data/latest --publish
+        run: |
+          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 manifest publication START"
+          python -m tools.edge_snapshot_publication --directory data/latest --publish
+          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 manifest publication END"
       - name: Publish non-secret research snapshot to EDGE repository
         run: |
           target_branch="${GITHUB_REF_NAME}"
