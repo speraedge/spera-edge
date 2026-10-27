@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 import pandas as pd
 from tools.import_screener_excel import (
-    parse_screener_excel, calculate_acceleration, import_workbook,
+    parse_screener_excel, calculate_acceleration, import_workbook, import_directory,
 )
 
 OWNER = "a" * 64
@@ -81,6 +81,36 @@ class ScreenerImportTests(unittest.TestCase):
         summaries = [sql for sql, _ in calls if "INSERT INTO edge_fundamental_acceleration" in sql]
         self.assertEqual(len(summaries), 2)
         self.assertTrue(all("ON CONFLICT(owner_id,symbol)" in sql for sql in summaries))
+
+
+    def test_directory_batch_continues_after_invalid_file(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            valid = self.make_book()
+            (root / "DRREDDY.xlsx").write_bytes(valid.read_bytes())
+            (root / "BROKEN.xlsx").write_text("not an Excel file")
+            (root / "~$LOCKED.xlsx").write_text("ignored")
+            calls = []
+            def query(sql, params=()):
+                calls.append((sql, params))
+                return []
+            report = import_directory(root, OWNER, query=query)
+            self.assertEqual(report["total"], 2)
+            self.assertEqual(report["imported"], 1)
+            self.assertEqual(report["failed"], 1)
+            self.assertEqual({r["file"] for r in report["results"]},
+                             {"DRREDDY.xlsx", "BROKEN.xlsx"})
+            self.assertTrue(any(params and len(params) > 1 and params[1] == "DRREDDY"
+                                for _, params in calls))
+
+    def test_directory_dry_run_never_writes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "BAJAJHLDNG.xlsx").write_bytes(self.make_book().read_bytes())
+            def reject(*args, **kwargs):
+                raise AssertionError("D1 must not be called")
+            report = import_directory(folder, OWNER, query=reject, dry_run=True)
+            self.assertEqual(report["imported"], 1)
+            self.assertEqual(report["failed"], 0)
 
     def test_nonpositive_eps_base_never_passes(self):
         rows = [{"quarter_end": str(x.date()), "revenue": 100 + i * 10, "eps": -1 if i == 3 else 2 + i}
