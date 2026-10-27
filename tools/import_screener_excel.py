@@ -170,17 +170,58 @@ def import_workbook(path, symbol, owner, *, query=d1_query, sheet=None, dry_run=
     return {"symbol": symbol, "quarters": len(rows), **result}
 
 
+def import_directory(directory, owner, *, query=d1_query, sheet=None, dry_run=False):
+    """Import each xlsx independently, continuing after errors."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise ValueError("Import directory does not exist")
+    paths = sorted(p for p in directory.iterdir()
+                   if p.is_file() and p.suffix.lower() == ".xlsx"
+                   and not p.name.startswith("~$"))
+    if not paths:
+        raise ValueError("No .xlsx files found in import directory")
+    report = {"total": len(paths), "imported": 0, "failed": 0, "results": []}
+    for path in paths:
+        symbol = path.stem.upper()
+        try:
+            if not SYMBOL.fullmatch(symbol):
+                raise ValueError("Filename is not a valid NSE symbol")
+            result = import_workbook(path, symbol, owner, query=query,
+                                     sheet=sheet, dry_run=dry_run)
+            report["imported"] += 1
+            report["results"].append({"file": path.name, "status": "OK",
+                                      "gate": result["status"], "quarters": result["quarters"]})
+        except Exception as exc:
+            report["failed"] += 1
+            report["results"].append({"file": path.name, "status": "FAILED",
+                                      "error_type": type(exc).__name__,
+                                      "error": str(exc) if isinstance(exc, (ValueError, OSError)) else "Import failed; check D1 connectivity"})
+    return report
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Import private Screener.in quarterly workbook into EDGE D1")
-    parser.add_argument("excel")
-    parser.add_argument("--symbol", required=True, help="Verified NSE symbol, not inferred from workbook")
-    parser.add_argument("--owner-id", required=True, help="64-char owner hash from authenticated EDGE identity")
+    parser = argparse.ArgumentParser(description="Import private Screener quarterly Excel into EDGE D1")
+    parser.add_argument("excel", nargs="?")
+    parser.add_argument("--dir", dest="directory", help="Folder containing symbol-named .xlsx files")
+    parser.add_argument("--symbol", help="Required for single workbook only")
+    parser.add_argument("--owner-id", required=True, help="Existing authenticated EDGE owner hash")
     parser.add_argument("--sheet")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    report = import_workbook(args.excel, args.symbol.strip().upper(), args.owner_id,
-                             sheet=args.sheet, dry_run=args.dry_run)
+    if bool(args.directory) == bool(args.excel):
+        parser.error("Specify exactly one of --dir or an Excel workbook")
+    if args.directory:
+        if args.symbol:
+            parser.error("--symbol cannot be combined with --dir")
+        report = import_directory(args.directory, args.owner_id, sheet=args.sheet, dry_run=args.dry_run)
+    else:
+        if not args.symbol:
+            parser.error("--symbol is required for single workbook import")
+        report = import_workbook(args.excel, args.symbol.strip().upper(), args.owner_id,
+                                 sheet=args.sheet, dry_run=args.dry_run)
     print(json.dumps(report, indent=2))
+    if args.directory and report["failed"]:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
