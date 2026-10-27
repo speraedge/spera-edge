@@ -30,7 +30,7 @@ class Phase1PageIsolation(unittest.TestCase):
     def test_no_eager_snapshot_loading_on_other_pages(self):
         source = (ROOT / "app.py").read_text(encoding="utf-8")
         self.assertIn('page in ("Market Pulse", "Portfolio & Journal")', source)
-        self.assertIn('render_private_portfolio(prices,snapshot_usable)', source)
+        self.assertIn("render_private_portfolio(prices,snapshot_usable, data_source='provisional' if is_provisional else 'verified')", source)
 
     def test_export_calls_preserved_in_pages(self):
         page_root = next(n for n in self.tree.body if isinstance(n, ast.If)
