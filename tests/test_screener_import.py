@@ -42,9 +42,10 @@ class ScreenerImportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_screener_excel(self.make_book(duplicate=True))
 
-    def test_missing_eps_fail_closed(self):
-        with self.assertRaises(ValueError):
-            parse_screener_excel(self.make_book(missing=True))
+    def test_missing_eps_is_review_not_fabricated(self):
+        rows = parse_screener_excel(self.make_book(missing=True))
+        self.assertIsNone(rows[-1]["eps"])
+        self.assertEqual(calculate_acceleration(rows)["status"], "REVIEW_MISSING_EPS")
 
     def test_dry_run_has_no_d1_calls(self):
         def reject(*args, **kwargs):
@@ -59,8 +60,8 @@ class ScreenerImportTests(unittest.TestCase):
             return []
         result = import_workbook(self.make_book(), "ABC", OWNER, query=query)
         self.assertEqual(result["status"], "PASS")
-        self.assertEqual(len(calls), 11)
-        for sql, params in calls[2:]:
+        self.assertEqual(len(calls), 20)
+        for sql, params in calls[3:]:
             self.assertEqual(params[0], OWNER)
             self.assertEqual(params[1], "ABC")
         self.assertFalse(any("data/latest" in sql or "public" in sql.lower() for sql, _ in calls))
@@ -111,6 +112,49 @@ class ScreenerImportTests(unittest.TestCase):
             report = import_directory(folder, OWNER, query=reject, dry_run=True)
             self.assertEqual(report["imported"], 1)
             self.assertEqual(report["failed"], 0)
+
+
+    def test_real_data_sheet_row_41_sales_and_pat_without_eps(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "RELIANCE.xlsx"
+            dates = pd.date_range("2024-03-31", periods=8, freq="QE-MAR")
+            data = [[None] * 9 for _ in range(52)]
+            data[40] = ["Report Date"] + list(dates.to_pydatetime())
+            data[41] = ["Sales"] + [100, 110, 125, 145, 170, 205, 250, 310]
+            data[48] = ["Net profit"] + [10, 12, 14, 17, 21, 26, 33, 42]
+            with pd.ExcelWriter(path) as writer:
+                pd.DataFrame(data).to_excel(writer, sheet_name="Data Sheet",
+                                            header=False, index=False)
+            rows = parse_screener_excel(path)
+            self.assertEqual(len(rows), 8)
+            self.assertEqual(rows[-1]["net_profit"], 42)
+            self.assertTrue(all(r["eps"] is None for r in rows))
+            calls = []
+            def query(sql, params=()):
+                calls.append((sql, params))
+                return []
+            report = import_workbook(path, "RELIANCE", OWNER, query=query)
+            self.assertEqual(report["status"], "REVIEW_MISSING_EPS")
+            self.assertEqual(sum("INSERT INTO edge_screener_quarter_pat" in sql for sql, _ in calls), 8)
+            self.assertEqual(sum("INSERT INTO edge_screener_quarters" in sql for sql, _ in calls), 0)
+
+    def test_manufacturing_data_sheet_uses_explicit_eps(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "COFORGE.xlsx"
+            dates = pd.date_range("2024-03-31", periods=8, freq="QE-MAR")
+            data = [[None] * 9 for _ in range(51)]
+            data[40] = ["Report Date"] + list(dates.to_pydatetime())
+            data[41] = ["Sales"] + [100, 110, 125, 145, 170, 205, 250, 310]
+            data[42] = ["Raw Material Cost"] + [20] * 8
+            data[48] = ["Net profit"] + [10, 12, 14, 17, 21, 26, 33, 42]
+            data[49] = ["EPS"] + [2, 3, 4, 5, 7, 11, 18, 30]
+            with pd.ExcelWriter(path) as writer:
+                pd.DataFrame(data).to_excel(writer, sheet_name="Data Sheet",
+                                            header=False, index=False)
+            rows = parse_screener_excel(path)
+            self.assertEqual(rows[-1]["eps"], 30)
+            self.assertEqual(rows[-1]["net_profit"], 42)
+            self.assertEqual(calculate_acceleration(rows)["status"], "PASS")
 
     def test_nonpositive_eps_base_never_passes(self):
         rows = [{"quarter_end": str(x.date()), "revenue": 100 + i * 10, "eps": -1 if i == 3 else 2 + i}

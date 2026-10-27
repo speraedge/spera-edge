@@ -17,6 +17,10 @@ QUARTERLY_SQL = """CREATE TABLE IF NOT EXISTS edge_screener_quarters (
  owner_id TEXT NOT NULL, symbol TEXT NOT NULL, quarter_end TEXT NOT NULL,
  revenue REAL NOT NULL, eps REAL NOT NULL, source TEXT NOT NULL,
  imported_utc TEXT NOT NULL, PRIMARY KEY(owner_id,symbol,quarter_end))"""
+PAT_SQL = """CREATE TABLE IF NOT EXISTS edge_screener_quarter_pat (
+ owner_id TEXT NOT NULL, symbol TEXT NOT NULL, quarter_end TEXT NOT NULL,
+ revenue REAL NOT NULL, net_profit REAL, source TEXT NOT NULL,
+ imported_utc TEXT NOT NULL, PRIMARY KEY(owner_id,symbol,quarter_end))"""
 GATE_SQL = """CREATE TABLE IF NOT EXISTS edge_fundamental_acceleration (
  owner_id TEXT NOT NULL, symbol TEXT NOT NULL, latest_quarter TEXT NOT NULL,
  status TEXT NOT NULL, metrics_json TEXT NOT NULL, updated_utc TEXT NOT NULL,
@@ -60,53 +64,70 @@ def _number(value):
 
 
 def parse_screener_excel(path, *, sheet=None):
-    """Accept Screener-style wide Quarters sheet with dated columns and row labels.
+    """Parse Screener's Data Sheet quarterly Report Date/Sales/Net profit block.
 
-    Requires explicit Sales/Revenue and EPS rows; refuses mixed or ambiguous
-    sheets, TTM columns and non-quarterly headers.
+    Never substitute PAT for EPS. If EPS is absent, retain PAT evidence and
+    mark the EPS component unavailable, rather than inventing a per-share value.
     """
     path = Path(path)
     if path.suffix.lower() not in (".xlsx", ".xlsm"):
         raise ValueError("An .xlsx or .xlsm workbook is required")
     book = pd.ExcelFile(path, engine="openpyxl")
-    selected = sheet or next((name for name in book.sheet_names if name.strip().lower() in
-                              ("quarters", "quarterly results", "quarterly")), None)
+    selected = sheet or next((name for name in book.sheet_names if name.strip().lower()
+                              == "data sheet"), None)
+    if selected is None:
+        selected = next((name for name in book.sheet_names if name.strip().lower() in
+                         ("quarters", "quarterly results", "quarterly")), None)
     if selected is None or selected not in book.sheet_names:
-        raise ValueError("Quarterly sheet not found; specify --sheet")
+        raise ValueError("Quarterly Data Sheet not found")
     raw = pd.read_excel(book, sheet_name=selected, header=None)
     candidates = []
-    for header_idx in range(min(len(raw), 35)):
-        header = raw.iloc[header_idx].tolist()
-        dates = [(i, _quarter(v)) for i, v in enumerate(header)]
-        dates = [(i, d) for i, d in dates if d is not None]
+    for idx in range(len(raw)):
+        label = str(raw.iat[idx, 0]).strip().lower()
+        if selected.strip().lower() == "data sheet" and label != "report date":
+            continue
+        dates = [(col, _quarter(raw.iat[idx, col])) for col in range(1, raw.shape[1])]
+        dates = [(col, date) for col, date in dates if date is not None]
         if len(dates) >= 6:
-            candidates.append((header_idx, dates))
+            candidates.append((idx, dates))
     if len(candidates) != 1:
-        raise ValueError("Ambiguous or missing quarterly date header")
-    header_idx, dates = candidates[0]
-    periods = [d for _, d in dates]
-    if len(set(periods)) != len(periods):
+        raise ValueError("Ambiguous or missing Report Date quarterly header")
+    idx, dates = candidates[0]
+    if len({d for _, d in dates}) != len(dates):
         raise ValueError("Duplicate quarterly dates")
-    labels = {}
-    for i in range(header_idx + 1, len(raw)):
+    # Stop at next section header: do not mix annual or balance-sheet metrics.
+    end = len(raw)
+    for i in range(idx + 1, len(raw)):
         label = str(raw.iat[i, 0]).strip().lower()
-        if re.fullmatch(r"(sales|sales \+|revenue|revenue \+|sales / revenue)", label):
+        if label == "report date":
+            end = i
+            break
+    labels = {}
+    for i in range(idx + 1, end):
+        label = str(raw.iat[i, 0]).strip().lower()
+        if label in ("sales", "sales +", "revenue", "revenue +", "sales / revenue"):
             labels.setdefault("revenue", []).append(i)
-        if re.fullmatch(r"(eps|eps in rs|eps in rs\.|eps in ₹|eps \(rs\.?\))", label):
+        if label in ("net profit", "net profit +", "net profit / loss", "profit after tax"):
+            labels.setdefault("net_profit", []).append(i)
+        if label in ("eps", "eps in rs", "eps in rs.", "eps in ₹", "eps (rs.)"):
             labels.setdefault("eps", []).append(i)
-    if any(len(labels.get(key, [])) != 1 for key in ("revenue", "eps")):
-        raise ValueError("Exactly one quarterly Sales/Revenue row and EPS row required")
+    if len(labels.get("revenue", [])) != 1:
+        raise ValueError("Exactly one Sales/Revenue row required")
+    if len(labels.get("eps", [])) > 1 or len(labels.get("net_profit", [])) > 1:
+        raise ValueError("Ambiguous EPS or Net profit row")
+    if not labels.get("eps") and not labels.get("net_profit"):
+        raise ValueError("Neither EPS nor Net profit found")
     rows = []
     for col, date in dates:
         revenue = _number(raw.iat[labels["revenue"][0], col])
-        eps = _number(raw.iat[labels["eps"][0], col])
+        eps = _number(raw.iat[labels["eps"][0], col]) if labels.get("eps") and not pd.isna(raw.iat[labels["eps"][0], col]) else None
+        pat = _number(raw.iat[labels["net_profit"][0], col]) if labels.get("net_profit") else None
         if revenue < 0:
             raise ValueError("Quarterly revenue cannot be negative")
-        rows.append({"quarter_end": date, "revenue": revenue, "eps": eps})
+        rows.append({"quarter_end": date, "revenue": revenue, "eps": eps, "net_profit": pat})
     rows.sort(key=lambda row: row["quarter_end"])
-    dates_sorted = [pd.Timestamp(row["quarter_end"]) for row in rows]
-    for previous, current in zip(dates_sorted, dates_sorted[1:]):
-        if current != previous + pd.offsets.QuarterEnd(1):
+    for previous, current in zip(rows, rows[1:]):
+        if pd.Timestamp(current["quarter_end"]) != pd.Timestamp(previous["quarter_end"]) + pd.offsets.QuarterEnd(1):
             raise ValueError("Nonconsecutive quarters; acceleration not certified")
     return rows
 
@@ -125,13 +146,22 @@ def calculate_acceleration(rows):
     rows = sorted(rows, key=lambda x: x["quarter_end"])
     metrics = {}
     for key in ("revenue", "eps"):
-        values = [float(r[key]) for r in rows]
+        values = [r.get(key) for r in rows]
+        if any(v is None for v in values[-7:]):
+            metrics[key] = {"qoq_growth_pct": [], "yoy_growth_pct": [],
+                            "qoq_accelerating": False, "yoy_accelerating": False,
+                            "available": False}
+            continue
+        values = [float(v) for v in values]
         qoq = [_growth(values[i], values[i - 1]) for i in range(len(values) - 3, len(values))]
         yoy = [_growth(values[i], values[i - 4]) for i in range(len(values) - 3, len(values))]
         metrics[key] = {"qoq_growth_pct": qoq, "yoy_growth_pct": yoy,
                         "qoq_accelerating": all(x is not None for x in qoq) and qoq[0] < qoq[1] < qoq[2],
-                        "yoy_accelerating": all(x is not None for x in yoy) and yoy[0] < yoy[1] < yoy[2]}
-    if any(None in metrics[key][kind] for key in metrics for kind in ("qoq_growth_pct", "yoy_growth_pct")):
+                        "yoy_accelerating": all(x is not None for x in yoy) and yoy[0] < yoy[1] < yoy[2],
+                        "available": True}
+    if not metrics["eps"]["available"]:
+        status = "REVIEW_MISSING_EPS"
+    elif any(None in metrics[key][kind] for key in metrics for kind in ("qoq_growth_pct", "yoy_growth_pct")):
         status = "REVIEW_NONPOSITIVE_BASE"
     elif all(metrics[key][kind] for key in metrics for kind in ("qoq_accelerating", "yoy_accelerating")):
         status = "PASS"
@@ -152,14 +182,24 @@ def import_workbook(path, symbol, owner, *, query=d1_query, sheet=None, dry_run=
     # Complete validation before any D1 write. Each quarter is owner-scoped.
     query(QUARTERLY_SQL)
     query(GATE_SQL)
+    query(PAT_SQL)
     stamp = datetime.now(timezone.utc).isoformat()
     for row in rows:
-        query("""INSERT INTO edge_screener_quarters
-                 (owner_id,symbol,quarter_end,revenue,eps,source,imported_utc)
+        query("""INSERT INTO edge_screener_quarter_pat
+                 (owner_id,symbol,quarter_end,revenue,net_profit,source,imported_utc)
                  VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,symbol,quarter_end)
-                 DO UPDATE SET revenue=excluded.revenue,eps=excluded.eps,
+                 DO UPDATE SET revenue=excluded.revenue,net_profit=excluded.net_profit,
                    source=excluded.source,imported_utc=excluded.imported_utc""",
-              (owner, symbol, row["quarter_end"], row["revenue"], row["eps"], "SCREENER_MANUAL_EXCEL", stamp))
+              (owner, symbol, row["quarter_end"], row["revenue"],
+               row.get("net_profit"), "SCREENER_MANUAL_EXCEL", stamp))
+        if row["eps"] is not None:
+            query("""INSERT INTO edge_screener_quarters
+                     (owner_id,symbol,quarter_end,revenue,eps,source,imported_utc)
+                     VALUES(?,?,?,?,?,?,?) ON CONFLICT(owner_id,symbol,quarter_end)
+                     DO UPDATE SET revenue=excluded.revenue,eps=excluded.eps,
+                       source=excluded.source,imported_utc=excluded.imported_utc""",
+                  (owner, symbol, row["quarter_end"], row["revenue"], row["eps"],
+                   "SCREENER_MANUAL_EXCEL", stamp))
     query("""INSERT INTO edge_fundamental_acceleration
              (owner_id,symbol,latest_quarter,status,metrics_json,updated_utc)
              VALUES(?,?,?,?,?,?) ON CONFLICT(owner_id,symbol) DO UPDATE SET
