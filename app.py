@@ -522,7 +522,7 @@ elif page == "Trade Desk":
                 membership_file = SNAPSHOT_DIR / "current_membership.csv"
                 provenance_file = SNAPSHOT_DIR / "evidence.json"
                 leadership_frame = snapshot_table("leadership")
-                if membership_file.is_file() and provenance_file.is_file() and leadership_frame is not None:
+                if not is_provisional and membership_file.is_file() and provenance_file.is_file() and leadership_frame is not None:
                     provenance = json.loads(provenance_file.read_text())
                     if provenance.get("membership_sha256") == hashlib.sha256(membership_file.read_bytes()).hexdigest() and provenance.get("membership_source"):
                         members = pd.read_csv(membership_file, dtype={"ISIN Code": str})
