@@ -2,8 +2,8 @@ name: NIFTY 500 automatic research snapshot
 on:
   workflow_dispatch:
   schedule:
-    # 09:00 IST Tuesday-Saturday (03:30 UTC): check the prior completed NSE session.
-    - cron: '30 3 * * 2-6'
+    # Four UTC attempts Tuesday-Saturday (09:30, 11:30, 13:30, 15:30 IST).
+    - cron: '0 4,6,8,10 * * 2-6'
 permissions:
   contents: write
 concurrency:

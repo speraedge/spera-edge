@@ -3,6 +3,7 @@
 Only a complete, identity-validated mapping is accepted. No trusted PASS labels.
 """
 import json
+import logging
 import os
 from datetime import date,timedelta,datetime,timezone
 from pathlib import Path
@@ -11,6 +12,26 @@ from edge_core.momentum_universe import NIFTY_500,fetch_official_universe
 from edge_core.instrument_mapping import fetch_upstox_instruments,join_official_universe
 from edge_core.upstox import fetch_daily_candles
 from edge_core.research_pipeline import derive_research
+from edge_core.ohlcv_integrity import VERIFIED_SPECIAL_SESSIONS
+
+def drop_unverified_weekend_rows(frame, *, symbol=None):
+    """Discard only unverified weekend dates from provider history.
+
+    Retain verified NSE special sessions; never repair or synthesize OHLCV.
+    """
+    if frame.empty:
+        return frame
+    sessions = pd.to_datetime(frame.index, errors="raise")
+    rejected = [i for i, session in enumerate(sessions)
+                if session.dayofweek >= 5
+                and session.date().isoformat() not in VERIFIED_SPECIAL_SESSIONS]
+    if rejected:
+        dates = sorted({sessions[i].date().isoformat() for i in rejected})
+        logging.warning("UPSTOX_UNVERIFIED_WEEKEND_ROWS_DROPPED symbol=%s count=%d dates=%s",
+                        symbol or "UNKNOWN", len(rejected), ",".join(dates))
+        return frame.iloc[[i for i in range(len(frame)) if i not in set(rejected)]]
+    return frame
+
 
 def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=None,instruments=None):
     token=token or os.getenv("UPSTOX_ACCESS_TOKEN") or os.getenv("UPSTOX_ANALYTIC_TOKEN")
@@ -49,7 +70,9 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
             frame=fetcher(row.instrument_key,start,end,token=token)
             if frame.empty:
                 raise ValueError("No historical sessions")
-            frame=frame.sort_index()
+            frame=drop_unverified_weekend_rows(frame, symbol=symbol).sort_index()
+            if frame.empty:
+                raise ValueError("No verified trading sessions after weekend filtering")
             successful+=1
             for name in fields:
                 fields[name][symbol]=frame[name]
