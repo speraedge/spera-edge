@@ -4,6 +4,7 @@ import numpy as np
 
 VERIFIED_SPECIAL_SESSIONS = {
     '2026-02-01': 'https://nsearchives.nseindia.com/content/circulars/CMTR72349.pdf',
+    '2026-11-08': 'NSE 2026 Muhurat Trading special session',
 }
 
 
@@ -39,8 +40,9 @@ def audit_ohlcv(close, high, low, volume, *, expected_last_session=None):
     if sessions.isna().any() or sessions.has_duplicates:
         raise ValueError("Invalid or duplicate session dates")
     special = [str(session.date()) for session in sessions if session.dayofweek >= 5]
-    if any(session not in VERIFIED_SPECIAL_SESSIONS for session in special):
-        raise ValueError("Weekend trading session in daily OHLCV")
+    unverified = [session for session in special if session not in VERIFIED_SPECIAL_SESSIONS]
+    if unverified:
+        raise ValueError("Unverified weekend trading session(s) in daily OHLCV: " + ", ".join(unverified))
     if expected_last_session is not None:
         expected = pd.Timestamp(expected_last_session).date()
         if sessions[-1].date() != expected:

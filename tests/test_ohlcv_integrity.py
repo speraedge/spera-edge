@@ -76,6 +76,32 @@ class OhlcvIntegrityTests(unittest.TestCase):
         result = audit_ohlcv(self.close, self.high, self.low, self.volume)
         self.assertEqual(result['verified_special_sessions'], ['2026-02-01'])
 
+    def test_official_muhurat_session_is_not_discarded(self):
+        for frame in (self.close, self.high, self.low, self.volume):
+            frame.index = pd.to_datetime(['2026-11-06', '2026-11-08'])
+        result = audit_ohlcv(self.close, self.high, self.low, self.volume,
+                             expected_last_session='2026-11-08')
+        self.assertEqual(result['verified_special_sessions'], ['2026-11-08'])
+
+    def test_unverified_weekend_date_reported_without_dropping(self):
+        for frame in (self.close, self.high, self.low, self.volume):
+            frame.index = pd.to_datetime(['2026-10-23', '2026-10-25'])
+        with self.assertRaisesRegex(ValueError, 'Unverified weekend.*2026-10-25'):
+            audit_ohlcv(self.close, self.high, self.low, self.volume)
+
+    def test_special_session_freshness_after_muhurat(self):
+        from edge_core.ohlcv_integrity import snapshot_is_fresh
+        cases = [
+            ('2026-11-08', '2026-11-08T16:00:00+05:30', True),
+            ('2026-11-08', '2026-11-09T09:00:00+05:30', True),
+            ('2026-11-06', '2026-11-09T09:00:00+05:30', False),
+            ('2026-02-01', '2026-02-02T09:00:00+05:30', True),
+            ('2026-01-30', '2026-02-02T09:00:00+05:30', False),
+        ]
+        for session, now, expected in cases:
+            with self.subTest(session=session, now=now):
+                self.assertEqual(snapshot_is_fresh(session, pd.Timestamp(now)), expected)
+
     def test_morning_schedule_uses_prior_completed_weekday(self):
         from edge_core.ohlcv_integrity import snapshot_is_fresh
         # Tuesday morning expects Monday, Saturday morning expects Friday.
