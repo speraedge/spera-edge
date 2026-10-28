@@ -76,7 +76,28 @@ def entry_diagnostics(close, high, low, volume, as_of):
                       Entry_Extended=bool(today['close'] > pivot * 1.05),
                       Technical_Entry_Review=bool(contraction and today['close'] > pivot and ratio >= 1.5 and today['close'] <= pivot * 1.05 and stop < today['close']))
         records.append(record)
-    return pd.DataFrame(records)
+    result = pd.DataFrame(records)
+    # Strict setup evidence comes from the same scanner used by Leadership.
+    # An observed breakout cannot independently certify a Minervini setup.
+    from edge_core.setup_scanner import setup_qualification_diagnostics
+    setup = setup_qualification_diagnostics(close, volume, high, low)
+    result = result.merge(setup, on="Symbol", how="left", validate="one_to_one")
+    result["Setup_Qualified"] = result["Setup_Qualified"].fillna(False).astype(bool)
+    # Incomplete OHLCV records intentionally have no breakout columns.
+    # Missing evidence must never be interpreted as a confirmed breakout.
+    breakout = result.get("Price_Breakout", pd.Series(False, index=result.index)).fillna(False).astype(bool)
+    volume_confirmed = result.get("Volume_Confirmed", pd.Series(False, index=result.index)).fillna(False).astype(bool)
+    entry_review = result.get("Technical_Entry_Review", pd.Series(False, index=result.index)).fillna(False).astype(bool)
+    result["Breakout_Confirmed"] = breakout & volume_confirmed
+    result["Technical_Entry_Review"] = entry_review & result["Setup_Qualified"]
+    result["Entry_Classification"] = np.select(
+        [result["Technical_Entry_Review"],
+         result["Breakout_Confirmed"] & ~result["Setup_Qualified"],
+         result["Setup_Qualified"]],
+        ["QUALIFIED_SETUP_BREAKOUT_REVIEW", "BREAKOUT_ONLY_REVIEW",
+         "SETUP_ONLY_REVIEW"],
+        default="NOT_QUALIFIED")
+    return result
 
 
 def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10, *, target=None, symbol=None, positions=None, membership=None, atr_candles=None, earnings_within_five_days=None, liquidity_candles=None, roundtrip_cost_pct=0.006):
@@ -632,6 +653,11 @@ def render_private_portfolio(close, snapshot_usable, *, data_source='verified'):
                 st.session_state.pop('saved_plan_selected', None)
         if loaded_plan:
             st.caption(f"Loaded plan: {loaded_plan['Symbol']} · pivot ₹{loaded_plan['Pivot']:.2f} · stop ₹{loaded_plan['Stop']:.2f}. Confirm all values against the actual fill before recording.")
+        # Required sizing evidence: fail closed without explicit user clearance.
+        st.subheader('New entry risk evidence')
+        st.caption('A research sizing preview is not an order. Complete the evidence for a BUY; unknown earnings risk is blocked.')
+        target_price = st.number_input('Proposed target price (INR)', min_value=0.0, value=0.0, disabled=not snapshot_usable, key='private_target_price')
+        earnings_clear = st.checkbox('I independently verified there are no earnings within the next 5 days', value=False, disabled=not snapshot_usable, key='private_earnings_clear')
         with st.form('private_edge_event'):
             kind = st.selectbox('Record type', ['BUY', 'SELL', 'STOP', 'NOTE'])
             symbol = st.text_input('Recorded symbol', value=loaded_plan['Symbol'] if loaded_plan else '').strip().upper()
@@ -648,8 +674,35 @@ def render_private_portfolio(close, snapshot_usable, *, data_source='verified'):
             existing = positions.loc[positions['Symbol'].eq(symbol), 'Exposure'].sum() if not positions.empty else 0
             sizing = None
             try:
-                sizing = plan_quantity(capital, risk_pct, price, stop, summary['open_risk'], summary['exposure'], heat, exposure_limit, single_limit)
-            except ValueError as exc:
+                # The entire price window must be real, aligned and current.
+                evidence = None
+                if close is not None and symbol in close.columns:
+                    from pathlib import Path
+                    source_root = Path(__file__).parent / 'data' / 'latest'
+                    def _read_history(kind):
+                        frame = pd.read_csv(source_root / (kind + '.csv'), index_col='Date', parse_dates=['Date'])
+                        return pd.to_numeric(frame[symbol], errors='coerce')
+                    h = _read_history('high')
+                    lo = _read_history('low')
+                    c = _read_history('close')
+                    v = _read_history('volume')
+                    aligned = pd.concat([h.rename('high'), lo.rename('low'), c.rename('close'), v.rename('volume')], axis=1).sort_index()
+                    if aligned.index.has_duplicates or len(aligned) < 20 or aligned.tail(20).isna().any().any():
+                        raise ValueError('Missing aligned 20-session risk evidence')
+                    if aligned.index[-1] != close.index[-1]:
+                        raise ValueError('Historical risk evidence does not match latest snapshot session')
+                    evidence = aligned
+                if evidence is None:
+                    raise ValueError('Current symbol risk evidence unavailable')
+                atr_candles = (evidence['high'], evidence['low'], evidence['close'])
+                liquidity_candles = (evidence['close'], evidence['volume'])
+                sizing = plan_quantity(
+                    capital, risk_pct, price, stop, summary['open_risk'],
+                    summary['exposure'], heat, exposure_limit, single_limit,
+                    target=target_price if target_price > 0 else None,
+                    atr_candles=atr_candles, liquidity_candles=liquidity_candles,
+                    earnings_within_five_days=False if earnings_clear else None)
+            except (ValueError, OSError, KeyError) as exc:
                 if str(exc) == 'EARNINGS_EVENT_GAP_RISK':
                     st.warning('Sizing preview blocked: Earnings clearance missing. Please confirm event risk.')
                 else:
