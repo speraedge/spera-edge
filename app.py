@@ -223,20 +223,15 @@ elif page == "Leadership Scanner":
                 scored=cached_v1(snapshot_identity(), frame)
                 # Research levels remain provisional until RS, sector and source gates are verified.
                 close_for_levels=snapshot_table("close") if edge_meta else None
-                # Evaluate setup diagnostics only for high-percentile candidates.
-                # These remain research-only until source and RS gates are certified.
-                candidate_symbols=scored.loc[
-                    pd.to_numeric(scored["Percentile"],errors="coerce").ge(80)
-                    & scored["Data_Quality"].isin(["PASS","REVIEW"]), "Symbol"
-                ].dropna().astype(str).tolist()
+                # Scan the complete validated OHLCV universe. Momentum rank is not
+                # a prefilter for technical setups; certification remains unchanged.
                 setup_candidates=None
-                if candidate_symbols and close_for_levels is not None:
+                if close_for_levels is not None:
                     hi=snapshot_table("high")
                     lo=snapshot_table("low")
                     vol=snapshot_table("volume")
                     if all(x is not None for x in (hi,lo,vol)):
-                        setup_candidates=cached_setups(snapshot_identity(), close_for_levels, vol, hi, lo,
-                                                       symbols=tuple(candidate_symbols))
+                        setup_candidates=cached_setups(snapshot_identity(), close_for_levels, vol, hi, lo)
                 levels=classify_leadership(scored,close_for_levels,setups=setup_candidates)
                 if close_for_levels is not None:
                     rs_table=cross_sectional_rs(close_for_levels)
@@ -255,6 +250,19 @@ elif page == "Leadership Scanner":
                 levels["SEPA_Certified"]=False
                 levels=leadership_evidence(levels,close_for_levels,SNAPSHOT_DIR)
                 st.caption("Technical confluence = price template + NIFTY 500 price-strength percentile. It excludes earnings, verified benchmark RS and current sector certification.")
+                st.subheader("Technical Confluence Watchlist — research only")
+                rs_70 = pd.to_numeric(levels["RS_Universe_252D_Pctile"], errors="coerce").ge(70)
+                template_pass = levels["Price_Template_Pass"].fillna(False)
+                setup_pass = levels["Setup_Diagnostic"].fillna(False)
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("RS ≥70", int(rs_70.sum()))
+                c2.metric("Price Template Pass", int(template_pass.sum()))
+                c3.metric("VCP Setup Pass", int(setup_pass.sum()))
+                confluence = levels.loc[rs_70 & template_pass & setup_pass].sort_values("Pure_Momentum_Rank")
+                c4.metric("All three gates", len(confluence))
+                st.caption("Full-universe technical intersection, not a certified SEPA or trading signal. RS is cross-sectional price performance, not benchmark-relative RS.")
+                st.dataframe(numbered(confluence), use_container_width=True)
+                export_section("Technical Confluence Watchlist", confluence, "technical_confluence_watchlist")
                 st.subheader("Leadership qualification funnel")
                 a1,a2,a3=st.columns(3)
                 a1.metric("Momentum leaders (trusted)",int(levels["Momentum_Leader"].sum()))
@@ -264,15 +272,15 @@ elif page == "Leadership Scanner":
                 st.metric("RS percentile ≥80 (research only)",int(levels["RS_80th_Percentile_Diagnostic"].sum()))
                 st.caption("Setup checks use actual OHLCV and remain provisional. No certified SEPA signals.")
                 st.caption("SEPA and actionable setup qualification pending independent relative strength, sector and source checks.")
-                st.dataframe(numbered(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50)),use_container_width=True)
-                export_section("Leadership qualification", levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank").head(50), "leadership_qualification")
+                st.dataframe(numbered(levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank")),use_container_width=True)
+                export_section("Leadership qualification", levels[levels["Research_Level"].ne("UNQUALIFIED")].sort_values("Pure_Momentum_Rank"), "leadership_qualification")
                 st.metric("Trusted PASS stocks", int(scored["Data_Quality"].eq("PASS").sum()))
                 st.subheader("Trusted PASS research")
                 st.dataframe(numbered(scored[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50)), use_container_width=True)
                 export_section("Trusted PASS", scored[scored["Data_Quality"].eq("PASS")].sort_values("Pure_Momentum_Rank").head(50), "trusted_pass")
                 st.subheader("Provisional REVIEW research")
-                st.dataframe(numbered(scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank").head(50)), use_container_width=True)
-                export_section("Provisional REVIEW", scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank").head(50), "provisional_review")
+                st.dataframe(numbered(scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank")), use_container_width=True)
+                export_section("Provisional REVIEW", scored[scored["Data_Quality"].eq("REVIEW")].sort_values("Pure_Momentum_Rank"), "provisional_review")
                 st.subheader("Excluded FAIL records")
                 st.dataframe(numbered(scored[scored["Data_Quality"].eq("FAIL")]), use_container_width=True)
                 export_section("Excluded FAIL", scored[scored["Data_Quality"].eq("FAIL")], "excluded_fail")
@@ -435,7 +443,7 @@ elif page == "Trade Desk":
     if trade_ranks is not None:
         st.info(f"Momentum / RS research from {trade_rank_date}" + (" (historical fallback)" if trade_historical else ""))
         rank_cols = [c for c in ("Symbol", "Percentile", "Pure_Momentum_Rank", "Data_Quality", "Ret_6M", "Ret_12M") if c in trade_ranks.columns]
-        st.dataframe(trade_ranks[rank_cols].sort_values("Pure_Momentum_Rank", na_position="last").head(50), use_container_width=True, hide_index=True)
+        st.dataframe(trade_ranks[rank_cols].sort_values("Pure_Momentum_Rank", na_position="last"), use_container_width=True, hide_index=True)
     else:
         st.info("Leadership / RS research unavailable: no validated latest or historical archive.")
     st.warning("Research candidates only. Confirm VCP contractions, pivot, volume and risk manually.")
