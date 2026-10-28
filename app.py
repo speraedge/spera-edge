@@ -5,7 +5,7 @@ from edge_core.analytics import stage2_template, market_breadth
 from edge_core.breakout_health import breakout_health, breakout_horizon_comparison
 from edge_core.breadth_breakout_bridge import breadth_breakout_summary
 from edge_core.momentum_v1 import apply_frozen_v1_scores
-from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage
+from edge_core.setup_scanner import compute_setup_scanner, setup_scanner_coverage, setup_qualification_diagnostics
 from edge_core.portfolio import position_size, journal_entry
 from edge_core.portfolio_risk import risk_budget
 from edge_core.leadership_levels import classify_leadership
@@ -239,6 +239,13 @@ elif page == "Leadership Scanner":
                     if all(x is not None for x in (hi,lo,vol)):
                         setup_candidates=cached_setups(snapshot_identity(), close_for_levels, vol, hi, lo)
                 levels=classify_leadership(scored,close_for_levels,setups=setup_candidates)
+                if close_for_levels is not None and all(x is not None for x in (hi, lo, vol)):
+                    setup_audit = setup_qualification_diagnostics(close_for_levels, vol, hi, lo)
+                    levels = levels.merge(setup_audit, on="Symbol", how="left", validate="one_to_one")
+                else:
+                    levels["Setup_Qualified"] = False
+                    levels["Setup_Fail_Reasons"] = "OHLCV_UNAVAILABLE"
+                levels["Setup_Qualified"] = levels["Setup_Qualified"].fillna(False).astype(bool)
                 if close_for_levels is not None:
                     rs_table=cross_sectional_rs(close_for_levels)
                     levels=levels.merge(rs_table,on="Symbol",how="left",validate="one_to_one")
@@ -259,15 +266,22 @@ elif page == "Leadership Scanner":
                 st.subheader("Technical Confluence Watchlist — research only")
                 rs_70 = pd.to_numeric(levels["RS_Universe_252D_Pctile"], errors="coerce").ge(70)
                 template_pass = levels["Price_Template_Pass"].fillna(False)
-                setup_pass = levels["Setup_Diagnostic"].fillna(False)
+                setup_pass = levels["Setup_Qualified"].fillna(False)
                 c1, c2, c3, c4 = st.columns(4)
                 c1.metric("RS ≥70", int(rs_70.sum()))
                 c2.metric("Price Template Pass", int(template_pass.sum()))
-                c3.metric("VCP Setup Pass", int(setup_pass.sum()))
+                c3.metric("Strict VCP Setup Qualified", int(setup_pass.sum()))
                 confluence = levels.loc[rs_70 & template_pass & setup_pass].sort_values("Pure_Momentum_Rank")
                 c4.metric("All three gates", len(confluence))
                 st.caption("Full-universe technical intersection, not a certified SEPA or trading signal. RS is cross-sectional price performance, not benchmark-relative RS.")
                 st.dataframe(numbered(confluence), use_container_width=True)
+                st.subheader("Strict setup rule audit — full universe")
+                st.dataframe(numbered(levels[["Symbol", "Setup_Qualified", "Setup_Fail_Reasons"]]), use_container_width=True)
+                export_section("Strict setup rule audit", levels[["Symbol", "Setup_Qualified", "Setup_Fail_Reasons"]], "strict_setup_rule_audit")
+                for audit_symbol in ("BATAINDIA", "BHARTIARTL"):
+                    matched = levels.loc[levels["Symbol"].astype(str).str.replace(".NS", "", regex=False).eq(audit_symbol)]
+                    if not matched.empty:
+                        st.caption(f"{audit_symbol}: {matched.iloc[0]['Setup_Fail_Reasons']}")
                 export_section("Technical Confluence Watchlist", confluence, "technical_confluence_watchlist")
                 st.subheader("Leadership qualification funnel")
                 a1,a2,a3=st.columns(3)
@@ -468,6 +482,11 @@ elif page == "Trade Desk":
                 st.json(coverage)
                 candidates=cached_setups(snapshot_identity(), close, volume, high, low)
                 st.dataframe(numbered(candidates), use_container_width=True)
+                st.subheader("Unified setup and breakout diagnostics")
+                from edge_workspace import entry_diagnostics
+                unified = entry_diagnostics(close, high, low, volume, edge_meta["last_session"])
+                st.dataframe(numbered(unified[["Symbol", "Setup_Qualified", "Breakout_Confirmed", "Entry_Classification", "Setup_Fail_Reasons"]]), use_container_width=True)
+                export_section("Unified setup and breakout diagnostics", unified, "unified_setup_breakout")
                 export_section("VCP research candidates", candidates, "vcp_candidates")
                 with st.expander("Candlestick chart · saved OHLCV research", expanded=False):
                     open_frame = snapshot_table("open")
