@@ -38,3 +38,14 @@ def test_insufficient_history_fails_closed():
     short = setup_qualification_diagnostics(close.tail(60), volume.tail(60), high.tail(60), low.tail(60))
     assert short.iloc[0]["Setup_Fail_Reasons"] == "INSUFFICIENT_OHLCV"
     assert not bool(short.iloc[0]["Setup_Qualified"])
+
+
+def test_missing_latest_price_remains_unconfirmed():
+    close, high, low, volume = _sample()
+    close.iloc[-1, 0] = np.nan
+    entry = entry_diagnostics(close, high, low, volume, close.index[-1]).iloc[0]
+    assert entry["Evidence"] == "INCOMPLETE_OHLCV"
+    assert not bool(entry["Setup_Qualified"])
+    assert not bool(entry["Breakout_Confirmed"])
+    assert not bool(entry["Technical_Entry_Review"])
+    assert entry["Entry_Classification"] == "NOT_QUALIFIED"
