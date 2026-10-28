@@ -312,3 +312,53 @@ def compute_setup_scanner(close_df: pd.DataFrame,
         ["VCP_Score", "Return_6M"], ascending=[False, False]
     ).reset_index(drop=True)
     return out
+
+
+# Full-universe fail-closed audit; the filtered setup scanner above remains
+# available for backward-compatible research exports.
+SETUP_RULES = ("uptrend", "atr_declining", "volume_contracting",
+               "vcp_contraction", "tight_consolidation", "near_52_week_high")
+
+def setup_qualification_diagnostics(close_df, volume_df, high_df, low_df):
+    """One shared strict VCP definition, with reasons for every symbol.
+
+    A controlled pullback is not a VCP. No threshold is relaxed here.
+    """
+    rows = []
+    for symbol in close_df.columns:
+        row = {"Symbol": symbol, "Setup_Qualified": False,
+               "Setup_Fail_Reasons": "INSUFFICIENT_OHLCV"}
+        if any(frame is None or symbol not in frame.columns for frame in
+               (volume_df, high_df, low_df)):
+            rows.append(row)
+            continue
+        frame = _indicators_one_stock(
+            pd.to_numeric(close_df[symbol], errors="coerce").sort_index(),
+            pd.to_numeric(volume_df[symbol], errors="coerce").sort_index(),
+            pd.to_numeric(high_df[symbol], errors="coerce").sort_index(),
+            pd.to_numeric(low_df[symbol], errors="coerce").sort_index())
+        if frame.empty:
+            rows.append(row)
+            continue
+        last = _evaluate_setups(frame).iloc[-1]
+        flags = {
+            "uptrend": bool(last["uptrend"]),
+            "atr_declining": bool(last["atr_declining"]),
+            "volume_contracting": bool(last["volume_contracting"]),
+            "vcp_contraction": bool(last["vcp_contraction"]),
+            "tight_consolidation": bool(last["tight_consolidation"]),
+            "near_52_week_high": bool(last["near_52_week_high"]),
+        }
+        # Require the contraction pattern, not the scanner's alternative
+        # tight-consolidation / controlled-pullback setup families.
+        qualified = all(flags[k] for k in
+                        ("uptrend", "atr_declining", "volume_contracting",
+                         "vcp_contraction", "near_52_week_high"))
+        failed = [key.upper() + "_FAIL" for key in
+                  ("uptrend", "atr_declining", "volume_contracting",
+                   "vcp_contraction", "near_52_week_high") if not flags[key]]
+        row.update(Setup_Qualified=qualified,
+                   Setup_Fail_Reasons="PASS" if qualified else "|".join(failed),
+                   **{"Setup_" + k: v for k, v in flags.items()})
+        rows.append(row)
+    return pd.DataFrame(rows)
