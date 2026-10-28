@@ -76,7 +76,29 @@ def entry_diagnostics(close, high, low, volume, as_of):
                       Entry_Extended=bool(today['close'] > pivot * 1.05),
                       Technical_Entry_Review=bool(contraction and today['close'] > pivot and ratio >= 1.5 and today['close'] <= pivot * 1.05 and stop < today['close']))
         records.append(record)
-    return pd.DataFrame(records)
+    result = pd.DataFrame(records)
+    # Strict setup evidence comes from the same scanner used by Leadership.
+    # An observed breakout cannot independently certify a Minervini setup.
+    from edge_core.setup_scanner import setup_qualification_diagnostics
+    setup = setup_qualification_diagnostics(close, volume, high, low)
+    result = result.merge(setup, on="Symbol", how="left", validate="one_to_one")
+    result["Setup_Qualified"] = result["Setup_Qualified"].fillna(False).astype(bool)
+    result["Breakout_Confirmed"] = (
+        result["Price_Breakout"].fillna(False).astype(bool)
+        & result["Volume_Confirmed"].fillna(False).astype(bool)
+    )
+    result["Technical_Entry_Review"] = (
+        result["Technical_Entry_Review"].fillna(False).astype(bool)
+        & result["Setup_Qualified"]
+    )
+    result["Entry_Classification"] = np.select(
+        [result["Technical_Entry_Review"],
+         result["Breakout_Confirmed"] & ~result["Setup_Qualified"],
+         result["Setup_Qualified"]],
+        ["QUALIFIED_SETUP_BREAKOUT_REVIEW", "BREAKOUT_ONLY_REVIEW",
+         "SETUP_ONLY_REVIEW"],
+        default="NOT_QUALIFIED")
+    return result
 
 
 def plan_quantity(equity, risk_pct, entry, stop, committed_risk, exposure, heat_pct=5, exposure_pct=100, single_pct=10, *, target=None, symbol=None, positions=None, membership=None, atr_candles=None, earnings_within_five_days=None, liquidity_candles=None, roundtrip_cost_pct=0.006):
