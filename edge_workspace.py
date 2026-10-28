@@ -83,14 +83,13 @@ def entry_diagnostics(close, high, low, volume, as_of):
     setup = setup_qualification_diagnostics(close, volume, high, low)
     result = result.merge(setup, on="Symbol", how="left", validate="one_to_one")
     result["Setup_Qualified"] = result["Setup_Qualified"].fillna(False).astype(bool)
-    result["Breakout_Confirmed"] = (
-        result["Price_Breakout"].fillna(False).astype(bool)
-        & result["Volume_Confirmed"].fillna(False).astype(bool)
-    )
-    result["Technical_Entry_Review"] = (
-        result["Technical_Entry_Review"].fillna(False).astype(bool)
-        & result["Setup_Qualified"]
-    )
+    # Incomplete OHLCV records intentionally have no breakout columns.
+    # Missing evidence must never be interpreted as a confirmed breakout.
+    breakout = result.get("Price_Breakout", pd.Series(False, index=result.index)).fillna(False).astype(bool)
+    volume_confirmed = result.get("Volume_Confirmed", pd.Series(False, index=result.index)).fillna(False).astype(bool)
+    entry_review = result.get("Technical_Entry_Review", pd.Series(False, index=result.index)).fillna(False).astype(bool)
+    result["Breakout_Confirmed"] = breakout & volume_confirmed
+    result["Technical_Entry_Review"] = entry_review & result["Setup_Qualified"]
     result["Entry_Classification"] = np.select(
         [result["Technical_Entry_Review"],
          result["Breakout_Confirmed"] & ~result["Setup_Qualified"],
