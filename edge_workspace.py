@@ -674,7 +674,6 @@ def render_private_portfolio(close, snapshot_usable, *, data_source='verified'):
             existing = positions.loc[positions['Symbol'].eq(symbol), 'Exposure'].sum() if not positions.empty else 0
             sizing = None
             try:
-                from edge_core.indian_risk_gates import atr_stop
                 # The entire price window must be real, aligned and current.
                 evidence = None
                 if close is not None and symbol in close.columns:
