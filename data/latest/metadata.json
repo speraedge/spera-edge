@@ -2,8 +2,13 @@
   "universe": "NIFTY_500",
   "expected": 501,
   "mapped": 500,
-  "retrieved": 500,
-  "retrieval_failures": [],
+  "retrieved": 499,
+  "retrieval_failures": [
+    {
+      "symbol": "BANKINDIA",
+      "error": "UpstoxDataError"
+    }
+  ],
   "official_placeholders": [
     {
       "Symbol": "DUMMYHEG",
@@ -12,18 +17,18 @@
   ],
   "unresolved_identities": [],
   "research_pass": 0,
-  "research_review": 481,
-  "research_fail": 20,
+  "research_review": 480,
+  "research_fail": 21,
   "last_session": "2026-11-02",
-  "generated_utc": "2026-11-03T04:47:53.423507+00:00",
+  "generated_utc": "2026-11-03T06:45:47.350194+00:00",
   "source": "Upstox historical candles + official NSE constituent identities",
   "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
   "certified": false,
   "breadth": {
-    "coverage": 500,
-    "eligible_50": 500,
-    "eligible_200": 491,
+    "coverage": 499,
+    "eligible_50": 499,
+    "eligible_200": 490,
     "above_50_pct": 23.8,
-    "above_200_pct": 35.4
+    "above_200_pct": 35.5
   }
 }
