@@ -2,8 +2,13 @@
   "universe": "NIFTY_500",
   "expected": 501,
   "mapped": 500,
-  "retrieved": 500,
-  "retrieval_failures": [],
+  "retrieved": 499,
+  "retrieval_failures": [
+    {
+      "symbol": "ASIANPAINT",
+      "error": "UpstoxDataError"
+    }
+  ],
   "official_placeholders": [
     {
       "Symbol": "DUMMYHEG",
@@ -12,18 +17,18 @@
   ],
   "unresolved_identities": [],
   "research_pass": 0,
-  "research_review": 481,
-  "research_fail": 20,
+  "research_review": 480,
+  "research_fail": 21,
   "last_session": "2026-11-09",
-  "generated_utc": "2026-11-10T04:47:55.752906+00:00",
+  "generated_utc": "2026-11-10T06:54:09.959297+00:00",
   "source": "Upstox historical candles + official NSE constituent identities",
   "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
   "certified": false,
   "breadth": {
-    "coverage": 500,
-    "eligible_50": 500,
-    "eligible_200": 492,
-    "above_50_pct": 51.2,
-    "above_200_pct": 47.8
+    "coverage": 499,
+    "eligible_50": 499,
+    "eligible_200": 491,
+    "above_50_pct": 51.1,
+    "above_200_pct": 47.7
   }
 }
