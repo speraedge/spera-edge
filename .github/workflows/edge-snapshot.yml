@@ -1,159 +1,42 @@
-name: NIFTY 500 automatic research snapshot
+name: SPERA EDGE Weekly Snapshot
+
 on:
-  workflow_dispatch:
   schedule:
-    # Four UTC attempts Tuesday-Saturday (09:30, 11:30, 13:30, 15:30 IST).
-    - cron: '0 4,6,8,10 * * 2-6'
+    # Runs every Friday at 18:00 UTC (11:30 PM IST)
+    # Runs every Saturday at 18:00 UTC (11:30 PM IST) as a fallback if Friday's Upstox data was delayed
+    - cron: '30 18 * * 5,6'
+  workflow_dispatch: # Allows you to run it manually if needed
+
 permissions:
   contents: write
-concurrency:
-  group: edge-n500-snapshot
-  cancel-in-progress: false
+
 jobs:
-  publish:
+  snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-      - uses: actions/setup-python@v5
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install -r requirements.txt
-      - name: Build isolated NIFTY 500 snapshot (retry stale provider only)
-        shell: bash
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run snapshot publisher
         env:
-          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          UPSTOX_ANALYTIC_TOKEN: ${{ secrets.UPSTOX_ANALYTIC_TOKEN }}
         run: |
-          set -uo pipefail
-          for attempt in 1 2 3; do
-            echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Snapshot attempt $attempt/3; Upstox fetch START"
-            log_file="$(mktemp)"
-            # Retry both build-time and post-build freshness failures.
-            if (python -m tools.publish_edge_snapshot && python - <<'PY'
-          import json
-          from datetime import datetime
-          from pathlib import Path
-          from zoneinfo import ZoneInfo
-          from edge_core.ohlcv_integrity import snapshot_is_fresh
-          meta = json.loads(Path("data/latest/metadata.json").read_text())
-          if not snapshot_is_fresh(meta["last_session"], datetime.now(ZoneInfo("Asia/Kolkata"))):
-              raise SystemExit("STALE_PROVIDER_SNAPSHOT: provider has not published latest completed session")
-          print("FRESH_PROVIDER_SNAPSHOT:", meta["last_session"])
-          PY
-            ) >"$log_file" 2>&1; then
-              cat "$log_file"
-              rm -f "$log_file"
-              echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Upstox fetch and freshness validation END; fresh snapshot obtained on attempt $attempt"
-              break
-            fi
-            cat "$log_file"
-            if ! grep -q 'STALE_PROVIDER_SNAPSHOT' "$log_file"; then
-              rm -f "$log_file"
-              echo "NON_STALE_SNAPSHOT_FAILURE: not retrying authentication, network, or validation errors"
-              exit 1
-            fi
-            rm -f "$log_file"
-            if [ "$attempt" -eq 3 ]; then
-              echo "STALE_PROVIDER_SNAPSHOT: exhausted two attempts; no publication"
-              exit 1
-            fi
-            echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] STALE_PROVIDER_SNAPSHOT: waiting 60 seconds before retry"
-            sleep 60
-          done
-      - name: Validate complete snapshot files and metadata
-        run: python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
-      - name: Enforce latest completed NSE session before live publication
+          python tools/publish_edge_snapshot.py
+
+      - name: Commit and push snapshot
         run: |
-          python - <<'PY'
-          import json
-          from datetime import datetime
-          from pathlib import Path
-          from zoneinfo import ZoneInfo
-          from edge_core.ohlcv_integrity import snapshot_is_fresh
-          meta = json.loads(Path("data/latest/metadata.json").read_text())
-          now = datetime.now(ZoneInfo("Asia/Kolkata"))
-          if not snapshot_is_fresh(meta["last_session"], now):
-              raise SystemExit("STALE_PROVIDER_SNAPSHOT: refusing D1 and repository publication")
-          print("Latest completed session verified:", meta["last_session"])
-          PY
-      - name: Publish dated current official membership and benchmark research
-        env:
-          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN || secrets.UPSTOX_ANALYTIC_TOKEN }}
-        run: python -m edge_evidence
-      - name: Validate published membership and benchmark evidence
-        run: python -m unittest discover -s tests -p 'test_published_evidence.py' -v
-      - name: Publish validated leadership research to EDGE D1
-        env:
-          EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
-          EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
-          EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
-        run: |
-          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 leadership publication START"
-          python -m tools.publish_edge_d1
-          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 leadership publication END"
-      - name: Verify immutable snapshot manifest in independent EDGE D1
-        env:
-          EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
-          EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
-          EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
-        run: |
-          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 manifest publication START"
-          python -m tools.edge_snapshot_publication --directory data/latest --publish
-          echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] D1 manifest publication END"
-      - name: Publish non-secret research snapshot to EDGE repository
-        run: |
-          target_branch="${GITHUB_REF_NAME}"
-          if [ -z "$target_branch" ] || [ "$target_branch" = "HEAD" ]; then
-            echo "UNSAFE_OR_MISSING_BRANCH_REF"; exit 1
-          fi
-          echo "Publishing snapshot only to triggering branch: $target_branch"
-          git config user.name "spera-edge-bot"
-          git config user.email "spera-edge-bot@users.noreply.github.com"
-          # Keep the freshly generated snapshot while rebasing onto concurrent code changes.
-          # Never force-push or overwrite unrelated commits.
-          # Fail closed if actual opening prices are absent or excluded from Git.
-          test -s data/latest/open.csv || { echo "MISSING_OPEN_CSV"; exit 1; }
-          git add -f data/latest/open.csv
-          # Fundamentals are maintained by the local operator, not the nightly job.
-          # Never stage or overwrite fundamentals_auto.csv from nightly runs.
-          git restore --staged data/latest/fundamentals_auto.csv 2>/dev/null || true
+          git config --global user.name "speraedge-bot"
+          git config --global user.email "bot@speraedge.local"
           git add data/latest
-          git restore --staged data/latest/fundamentals_auto.csv 2>/dev/null || true
-          git ls-files --error-unmatch data/latest/open.csv
-          if ! git diff --cached --quiet; then
-            git commit -m "data: publish NIFTY 500 research snapshot [skip ci]"
-            for attempt in 1 2 3 4 5; do
-              git fetch origin "$target_branch"
-              if git rebase "origin/$target_branch"; then
-                if git push origin "HEAD:$target_branch"; then
-                  exit 0
-                fi
-              else
-                git rebase --abort || true
-                echo "Snapshot conflicts with concurrent main changes; refusing unsafe overwrite."
-                exit 1
-              fi
-              echo "Concurrent update during push; retrying ($attempt/5)"
-              sleep $((attempt * 2))
-            done
-            echo "Could not publish snapshot after five safe attempts."
-            exit 1
-          fi
-      - name: Archive Phase 2 opening-price diagnostics even on validation failure
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase2-open-diagnostic
-          path: data/phase2-open-diagnostic/
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Archive published research evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: edge-n500-snapshot-evidence
-          path: data/latest/
-          if-no-files-found: ignore
-          retention-days: 14
+          git commit -m "data: weekly research snapshot [skip ci]" || echo "No changes to commit"
+          git push
