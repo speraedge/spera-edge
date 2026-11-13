@@ -13,7 +13,7 @@ import pandas as pd
 def historical_leadership_context(events, directory):
     root = Path(directory)
     manifest = json.loads((root / "manifest.json").read_text())
-    if manifest.get("universe") != "NIFTY_500":
+    if manifest.get("universe") not in ("NIFTY_500", "NIFTY_TOTAL_MARKET"):
         raise ValueError("Wrong historical universe")
     observations = []
     for item in manifest["weeks"]:
