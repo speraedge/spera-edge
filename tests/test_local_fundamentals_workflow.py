@@ -8,7 +8,7 @@ SCRIPT = (ROOT / "tools/fetch_fundamentals_local.py").read_text()
 
 
 class LocalFundamentalsTests(unittest.TestCase):
-    def test_nightly_does_not_fetch_fundamentals(self):
+    def test_snapshot_does_not_fetch_fundamentals(self):
         self.assertNotIn("python -m edge_fundamentals", WORKFLOW)
         self.assertNotIn("python -m tools.build_bse_mapping", WORKFLOW)
         self.assertIn("git restore --staged data/latest/fundamentals_auto.csv", WORKFLOW)
