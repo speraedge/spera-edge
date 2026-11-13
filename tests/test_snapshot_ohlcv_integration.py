@@ -9,8 +9,8 @@ from edge_core.snapshot_integrity import validate_snapshot
 
 class CanonicalSnapshotOhlcvTests(unittest.TestCase):
     def build(self, root, *, corrupt=False):
-        names = [f"S{i:03d}" for i in range(500)]
-        pd.DataFrame({"Symbol": names, "Data_Quality": ["REVIEW"] * 500}).to_csv(
+        names = [f"S{i:03d}" for i in range(750)]
+        pd.DataFrame({"Symbol": names, "Data_Quality": ["REVIEW"] * 750}).to_csv(
             root / "leadership.csv", index=False)
         dates = pd.bdate_range("2025-12-01", periods=220)
         for name, value in (("open", 100.5), ("close", 100.0), ("high", 102.0),
@@ -21,9 +21,9 @@ class CanonicalSnapshotOhlcvTests(unittest.TestCase):
             data.index.name = "Date"
             data.to_csv(root / (name + ".csv"))
         (root / "metadata.json").write_text(json.dumps({
-            "universe": "NIFTY_500", "certified": False, "expected": 500,
-            "mapped": 500, "retrieved": 500, "retrieval_failures": [],
-            "research_pass": 0, "research_review": 500, "research_fail": 0,
+            "universe": "NIFTY_TOTAL_MARKET", "certified": False, "expected": 750,
+            "mapped": 750, "retrieved": 750, "retrieval_failures": [],
+            "research_pass": 0, "research_review": 750, "research_fail": 0,
             "last_session": str(dates[-1].date())
         }), encoding="utf-8")
 
@@ -31,7 +31,7 @@ class CanonicalSnapshotOhlcvTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             self.build(root)
-            self.assertEqual(validate_snapshot(root)["retrieved"], 500)
+            self.assertEqual(validate_snapshot(root)["retrieved"], 750)
 
     def test_invalid_candle_fails_canonical_validator(self):
         with tempfile.TemporaryDirectory() as d:
