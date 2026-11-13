@@ -16,7 +16,7 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         self.assertIn("## Five tabs", readme)
         self.assertIn("No brokerage execution", app)
 
-    def test_weekday_snapshot_requires_validation_before_d1(self):
+    def test_scheduled_snapshot_requires_validation_before_d1(self):
         workflow = (ROOT / ".github/workflows/edge-snapshot.yml").read_text(encoding="utf-8")
         steps = (
             "Build isolated NIFTY 500 snapshot",
@@ -28,8 +28,15 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         )
         offsets = [workflow.index(step) for step in steps]
         self.assertEqual(offsets, sorted(offsets))
-        self.assertIn("0 4,6,8,10 * * 2-6", workflow)
+        # Tue-Fri 09:00 IST captures each Mon-Thu session the next morning.
+        # Saturday 10:00 IST captures Friday's session + weekly evidence refresh.
+        self.assertIn("30 3 * * 2-5", workflow)
+        self.assertIn("30 4 * * 6", workflow)
+        # Old schedules must be absent.
+        self.assertNotIn("0 18 * * 1-5", workflow)
+        self.assertNotIn("30 18 * * 5,6", workflow)
         self.assertNotIn("0 17 * * 1-5", workflow)
+        self.assertNotIn("0 4,6,8,10 * * 2-6", workflow)
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("for attempt in 1 2 3; do", workflow)
         self.assertIn("sleep 60", workflow)
@@ -38,8 +45,6 @@ class EdgeAcceptanceContractTests(unittest.TestCase):
         self.assertIn("D1 leadership publication START", workflow)
         self.assertIn("D1 leadership publication END", workflow)
         self.assertIn("STALE_PROVIDER_SNAPSHOT", workflow)
-        self.assertNotIn("30 1,2,3 * * 2-6", workflow)
-        self.assertNotIn("- cron: '0 14 * * 1-5'", workflow)
         freshness = "Enforce latest completed NSE session before live publication"
         self.assertIn(freshness, workflow)
         self.assertLess(workflow.index("Validate complete snapshot files and metadata"), workflow.index(freshness))
