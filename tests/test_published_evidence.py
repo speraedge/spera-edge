@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import unittest
 from datetime import date
-
+from edge_core.momentum_universe import NIFTY_500, NIFTY_TOTAL_MARKET
 
 ROOT = Path(__file__).resolve().parents[1] / "data" / "latest"
 
@@ -18,6 +18,7 @@ class PublishedEvidenceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.meta = json.loads((ROOT / "metadata.json").read_text())
         cls.evidence = json.loads((ROOT / "evidence.json").read_text())
+        cls.active_spec = NIFTY_TOTAL_MARKET if cls.meta.get("universe") == "NIFTY_TOTAL_MARKET" else NIFTY_500
 
     def test_official_membership_matches_published_digest(self):
         path = ROOT / "current_membership.csv"
@@ -32,16 +33,13 @@ class PublishedEvidenceTests(unittest.TestCase):
         self.assertTrue(all(symbols))
         self.assertTrue(all(row["Industry"].strip() for row in rows))
         self.assertLessEqual(int(self.meta["mapped"]), len(rows))
-        self.assertEqual(self.evidence["membership_source"],
-                         "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv")
+        self.assertIn(self.evidence["membership_source"], self.active_spec.urls)
 
     def test_placeholder_is_explicitly_classified_when_metadata_available(self):
         placeholders = self.meta.get("official_placeholders")
         if placeholders is None:
             self.skipTest("Published snapshot predates placeholder classification")
-        self.assertEqual(placeholders, [
-            {"Symbol": "DUMMYHEG", "ISIN": "DUM545A01024"}
-        ])
+        self.assertTrue(all(str(p.get("ISIN", "")).startswith("DUM") for p in placeholders))
         unresolved = self.meta.get("unresolved_identities", [])
         self.assertFalse(any(row.get("Symbol") == "DUMMYHEG" for row in unresolved))
         self.assertEqual(int(self.meta["expected"]) - int(self.meta["mapped"]),
@@ -52,7 +50,7 @@ class PublishedEvidenceTests(unittest.TestCase):
             self.assertFalse(self.meta["certified"])
             self.skipTest("Benchmark unavailable: evidence must remain uncertified")
         self.assertEqual(self.evidence["benchmark_status"], "PROVIDER_HISTORY")
-        self.assertEqual(self.evidence["benchmark_name"], "NIFTY 500")
+        self.assertEqual(self.evidence["benchmark_name"], self.active_spec.display_name)
         self.assertTrue(self.evidence["benchmark_instrument"].startswith("NSE_INDEX|"))
         path = ROOT / "benchmark.csv"
         self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),
