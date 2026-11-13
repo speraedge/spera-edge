@@ -27,10 +27,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Build isolated NIFTY 500 snapshot
+      - name: Build isolated research snapshot
         env:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
           UPSTOX_ANALYTIC_TOKEN: ${{ secrets.UPSTOX_ANALYTIC_TOKEN }}
+          EDGE_UNIVERSE: NIFTY_TOTAL_MARKET
         run: |
           for attempt in 1 2 3; do
             if python -m tools.publish_edge_snapshot; then
@@ -54,10 +55,13 @@ jobs:
         env:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
           UPSTOX_ANALYTIC_TOKEN: ${{ secrets.UPSTOX_ANALYTIC_TOKEN }}
+          EDGE_UNIVERSE: NIFTY_TOTAL_MARKET
         run: python -m edge_evidence
 
       - name: Validate published membership and benchmark evidence
         continue-on-error: true
+        env:
+          EDGE_UNIVERSE: NIFTY_TOTAL_MARKET
         run: |
           python -c "
           import pandas as pd
