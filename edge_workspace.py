@@ -15,6 +15,7 @@ from edge_core.setup_decisions import validate_decision, DECISIONS, REASONS
 from edge_core.decision_outcomes import decision_outcomes
 from edge_core.decision_links import validate_trade_link
 from edge_core.link_audit import audit_decision_links
+from edge_core.momentum_universe import NIFTY_500, NIFTY_TOTAL_MARKET
 
 
 def market_report(close):
@@ -199,14 +200,17 @@ def load_current_evidence(directory, close):
     from pathlib import Path
     root = Path(directory)
     evidence = json.loads((root / 'evidence.json').read_text())
+    universe_id = evidence.get('universe', 'NIFTY_500')
+    active_spec = NIFTY_TOTAL_MARKET if universe_id == "NIFTY_TOTAL_MARKET" else NIFTY_500
+    
     fetched = datetime.fromisoformat(evidence['fetched_utc'])
     age = (datetime.now(timezone.utc) - fetched).total_seconds()
-    if not 0 <= age <= 7 * 86400 or evidence['membership_source'] not in NIFTY_MEMBERSHIP_SOURCES:
+    if not 0 <= age <= 7 * 86400 or evidence['membership_source'] not in active_spec.urls:
         raise ValueError('Current membership evidence is stale or source is not authoritative')
     if hashlib.sha256((root / 'current_membership.csv').read_bytes()).hexdigest() != evidence['membership_sha256']:
         raise ValueError('Membership checksum mismatch')
     members = pd.read_csv(root / 'current_membership.csv')
-    if len(members) != evidence['membership_rows'] or not 495 <= len(members) <= 505:
+    if len(members) != evidence['membership_rows'] or not active_spec.min_count <= len(members) <= active_spec.max_count:
         raise ValueError('Membership coverage invalid')
     industries = industry_participation(close, members)
     benchmark = None
@@ -218,9 +222,6 @@ def load_current_evidence(directory, close):
         if len(series) >= 253 and np.isfinite(series.tail(253)).all() and series.tail(253).gt(0).all() and not frame.index.has_duplicates:
             benchmark = series
     return evidence, members, industries, benchmark
-
-
-NIFTY_MEMBERSHIP_SOURCES = ('https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv', 'https://www.niftyindices.com/IndexConstituent/ind_nifty500list.csv')
 
 
 class Ledger:
