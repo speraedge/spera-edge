@@ -32,7 +32,7 @@ def load_leadership(latest_dir, history_dir, *, latest_date=None, current_date=N
         return None, None, True
     try:
         metadata = json.loads(manifest.read_text())
-        if metadata.get("universe") != "NIFTY_500":
+        if metadata.get("universe") not in ("NIFTY_500", "NIFTY_TOTAL_MARKET"):
             return None, None, True
         for entry in sorted(metadata.get("weeks", []), key=lambda x: x.get("weekly_key", ""), reverse=True):
             if latest_date and str(entry.get("weekly_key", "")) > str(latest_date):
