@@ -1,11 +1,12 @@
-name: SPERA EDGE Weekly Snapshot
+name: SPERA EDGE Snapshot
 
 on:
   schedule:
-    # Runs every Friday at 18:00 UTC (11:30 PM IST)
-    # Runs every Saturday at 18:00 UTC (11:30 PM IST) as a fallback if Friday failed
-    - cron: '30 18 * * 5,6'
-  workflow_dispatch: # Allows manual trigger
+    # Tue-Fri 09:00 IST (03:30 UTC) — capture previous day's completed session
+    - cron: '30 3 * * 2-5'
+    # Saturday 10:00 IST (04:30 UTC) — capture Friday + weekly evidence refresh
+    - cron: '30 4 * * 6'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -13,7 +14,7 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -26,18 +27,81 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run snapshot publisher
+      - name: Build isolated NIFTY 500 snapshot
         env:
           UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
           UPSTOX_ANALYTIC_TOKEN: ${{ secrets.UPSTOX_ANALYTIC_TOKEN }}
         run: |
-          # VERIFY THIS SCRIPT NAME MATCHES YOUR REPO
-          python -m tools.publish_edge_snapshot
+          for attempt in 1 2 3; do
+            if python -m tools.publish_edge_snapshot; then
+              echo "Snapshot build succeeded on attempt $attempt"
+              exit 0
+            fi
+            echo "Attempt $attempt failed"
+            if [ "$attempt" = "3" ]; then
+              echo "Snapshot build failed after 3 attempts"
+              exit 1
+            fi
+            sleep 60
+          done
 
-      - name: Commit and push snapshot
+      - name: Validate complete snapshot files and metadata
+        run: |
+          python -c "from edge_core.snapshot_integrity import validate_snapshot; print(validate_snapshot())"
+
+      - name: Publish dated current official membership and benchmark research
+        if: github.event_name == 'workflow_dispatch' || github.event.schedule == '30 4 * * 6'
+        env:
+          UPSTOX_ACCESS_TOKEN: ${{ secrets.UPSTOX_ACCESS_TOKEN }}
+          UPSTOX_ANALYTIC_TOKEN: ${{ secrets.UPSTOX_ANALYTIC_TOKEN }}
+        run: python -m edge_evidence
+
+      - name: Validate published membership and benchmark evidence
+        continue-on-error: true
+        run: |
+          python -c "
+          import pandas as pd
+          from edge_workspace import load_current_evidence
+          close = pd.read_csv('data/latest/close.csv', index_col='Date', parse_dates=['Date'])
+          evidence, members, industries, benchmark = load_current_evidence('data/latest', close)
+          print(f'Membership: {len(members)} rows; benchmark: {evidence.get(\"benchmark_status\")}')
+          "
+
+      - name: Enforce latest completed NSE session before live publication
+        run: |
+          python -c "
+          import json
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          from edge_core.ohlcv_integrity import snapshot_is_fresh
+          meta = json.loads(open('data/latest/metadata.json').read())
+          now_ist = datetime.now(ZoneInfo('Asia/Kolkata'))
+          if not snapshot_is_fresh(meta['last_session'], now_ist):
+              print('STALE_PROVIDER_SNAPSHOT')
+              print(f'Last session: {meta[\"last_session\"]}, now IST: {now_ist.isoformat()}')
+              raise SystemExit(1)
+          print(f'Snapshot fresh: {meta[\"last_session\"]}')
+          "
+
+      - name: Publish validated leadership research to EDGE D1
+        env:
+          EDGE_CF_ACCOUNT_ID: ${{ secrets.EDGE_CF_ACCOUNT_ID }}
+          EDGE_D1_DATABASE_ID: ${{ secrets.EDGE_D1_DATABASE_ID }}
+          EDGE_CF_API_TOKEN: ${{ secrets.EDGE_CF_API_TOKEN }}
+        run: |
+          echo "D1 leadership publication START"
+          python -m tools.publish_edge_d1
+          echo "D1 leadership publication END"
+
+      - name: Publish non-secret research snapshot to EDGE repository
         run: |
           git config --global user.name "speraedge-bot"
           git config --global user.email "bot@speraedge.local"
           git add data/latest
-          git commit -m "data: weekly research snapshot [skip ci]" || echo "No changes to commit"
-          git push
+          git restore --staged data/latest/fundamentals_auto.csv 2>/dev/null || true
+          if ! git diff --cached --quiet; then
+            git commit -m "data: research snapshot [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
