@@ -86,7 +86,8 @@ try:
         raise ValueError("Unexpected snapshot contract")
     active_spec = NIFTY_TOTAL_MARKET if universe_id == "NIFTY_TOTAL_MARKET" else NIFTY_500
     
-    if edge_meta.get("certified") is not False or not (active_spec.min_count <= int(edge_meta.get("expected",0)) <= active_spec.max_count) or int(edge_meta.get("mapped",0)) < active_spec.mapped_min_count:
+    # THE FIX IS HERE: changed mapped_min_count to min_count
+    if edge_meta.get("certified") is not False or not (active_spec.min_count <= int(edge_meta.get("expected",0)) <= active_spec.max_count) or int(edge_meta.get("mapped",0)) < active_spec.min_count:
         raise ValueError("Unexpected snapshot contract")
 except (OSError,ValueError,TypeError,KeyError):
     edge_meta=None
