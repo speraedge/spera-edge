@@ -12,7 +12,7 @@ from edge_core.historical_replay import replay_breakout_rules
 def run(root=Path("data/latest"), output_dir=None):
     root = Path(root)
     meta = json.loads((root / "metadata.json").read_text())
-    if meta.get("source", "").find("Upstox") < 0 or meta.get("universe") != "NIFTY_500":
+    if meta.get("source", "").find("Upstox") < 0 or meta.get("universe") not in ("NIFTY_500", "NIFTY_TOTAL_MARKET"):
         raise ValueError("Unexpected OHLCV source or universe")
     frames = {}
     for name in ("close", "high", "low", "volume"):
@@ -20,7 +20,7 @@ def run(root=Path("data/latest"), output_dir=None):
     if any(not f.index.equals(frames["close"].index) or not f.columns.equals(frames["close"].columns) for f in frames.values()):
         raise ValueError("Saved OHLCV tables are misaligned")
     if len(frames["close"].columns) < 495:
-        raise ValueError("Insufficient NIFTY 500 symbol coverage")
+        raise ValueError("Insufficient symbol coverage")
     if str(frames["close"].index[-1].date()) != meta["last_session"]:
         raise ValueError("Snapshot last session differs from metadata")
     result = replay_breakout_rules(frames["close"], frames["high"], frames["low"],
