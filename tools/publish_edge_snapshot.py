@@ -1,4 +1,4 @@
-"""Publish NIFTY 500 research snapshots independently of SPERA production.
+"""Publish NIFTY 500 or Total Market research snapshots independently of SPERA production.
 
 Only a complete, identity-validated mapping is accepted. No trusted PASS labels.
 """
@@ -8,17 +8,14 @@ import os
 from datetime import date,timedelta,datetime,timezone
 from pathlib import Path
 import pandas as pd
-from edge_core.momentum_universe import NIFTY_500,fetch_official_universe
+from edge_core.momentum_universe import NIFTY_500, NIFTY_TOTAL_MARKET, fetch_official_universe
 from edge_core.instrument_mapping import fetch_upstox_instruments,join_official_universe
 from edge_core.upstox import fetch_daily_candles
 from edge_core.research_pipeline import derive_research
 from edge_core.ohlcv_integrity import VERIFIED_SPECIAL_SESSIONS
 
 def drop_unverified_weekend_rows(frame, *, symbol=None):
-    """Discard only unverified weekend dates from provider history.
-
-    Retain verified NSE special sessions; never repair or synthesize OHLCV.
-    """
+    """Discard only unverified weekend dates from provider history."""
     if frame.empty:
         return frame
     sessions = pd.to_datetime(frame.index, errors="raise")
@@ -37,30 +34,36 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
     token=token or os.getenv("UPSTOX_ACCESS_TOKEN") or os.getenv("UPSTOX_ANALYTIC_TOKEN")
     if not token:
         raise RuntimeError("Upstox token missing; refusing to publish")
+        
+    universe_id = os.getenv("EDGE_UNIVERSE", "NIFTY_500")
+    spec = NIFTY_TOTAL_MARKET if universe_id == "NIFTY_TOTAL_MARKET" else NIFTY_500
+    
     if universe is None:
-        universe,_=fetch_official_universe(NIFTY_500,attempts_per_url=2)
+        universe,_=fetch_official_universe(spec,attempts_per_url=2)
     if instruments is None:
         instruments=fetch_upstox_instruments()
     mapping=join_official_universe(universe,instruments)
     expected=len(mapping)
     missing=mapping.loc[mapping["Mapping_Status"].ne("MAPPED"),["Symbol","ISIN"]].to_dict("records")
-    if not (495<=expected<=505):
-        raise RuntimeError(f"Official NIFTY 500 count outside safe range: {expected}")
-    # Preserve official source rows, but explicitly distinguish the known NSE
-    # placeholder from a genuine provider-mapping failure. Never synthesize prices.
-    known_placeholder = {"Symbol": "DUMMYHEG", "ISIN": "DUM545A01024"}
-    placeholders = [row for row in missing if row == known_placeholder]
-    unresolved_identities = [row for row in missing if row != known_placeholder]
+    
+    if not (spec.min_count <= expected <= spec.max_count):
+        raise RuntimeError(f"Official {spec.display_name} count outside safe range: {expected}")
+        
+    # Policy check for placeholders (any ISIN starting with DUM)
+    placeholders = [row for row in missing if str(row.get("ISIN", "")).startswith("DUM")]
+    unresolved_identities = [row for row in missing if not str(row.get("ISIN", "")).startswith("DUM")]
+    
     if missing:
         print(json.dumps({"official_count":expected,"mapped":expected-len(missing),
                           "official_placeholders":placeholders,
                           "unresolved_identities":unresolved_identities},indent=2))
-    # Original SPERA audit verified 501 constituents and one provider failure.
-    if expected-len(missing)<495:
-        raise RuntimeError("NIFTY 500 mapped identity coverage below safe threshold")
+                          
+    if expected-len(missing) < spec.mapped_min_count:
+        raise RuntimeError(f"{spec.display_name} mapped identity coverage below safe threshold")
+        
     mapping_ok=mapping.loc[mapping["Mapping_Status"].eq("MAPPED")]
     end=date.today()
-    start=end-timedelta(days=800)  # ~500 exchange sessions, allowing holidays and closures
+    start=end-timedelta(days=800)
     fields={name:{} for name in ("open","close","high","low","volume")}
     failures=[]
     successful=0
@@ -78,40 +81,44 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
                 fields[name][symbol]=frame[name]
         except Exception as exc:
             failures.append({"symbol":symbol,"error":type(exc).__name__})
-    if successful<495:
-        raise RuntimeError(f"Only {successful}/{expected} symbols retrieved; minimum safe coverage is 495")
+            
+    if successful < spec.mapped_min_count:
+        raise RuntimeError(f"Only {successful}/{expected} symbols retrieved; minimum safe coverage is {spec.mapped_min_count}")
+        
     matrices={}
     for name,series in fields.items():
         matrices[name]=pd.DataFrame(series).sort_index()
     close=matrices["close"]
     volume=matrices["volume"].reindex(close.index)
-    # Retain the 253-session minimum research integrity gate while fetching ~500 sessions.
-    # Individual provider gaps fail closed rather than distorting point-in-time breadth.
+    
     if len(close)<253:
         raise RuntimeError("Insufficient market calendar history; refusing publication")
     research,breadth=derive_research(close,volume)
     if len(research)!=successful:
         raise RuntimeError("Research retrieved-universe coverage gate failed")
+        
     import tempfile, shutil
     from edge_core.snapshot_integrity import validate_snapshot
     destination=Path(outdir)
     destination.parent.mkdir(parents=True,exist_ok=True)
     staging=Path(tempfile.mkdtemp(prefix='.edge-snapshot-',dir=destination.parent))
-    # Preserve the official universe even when a provider symbol is missing.
+    
     missing=[symbol for symbol in mapping["Symbol"] if symbol not in fields["close"]]
     if missing:
         import numpy as np
         extra=pd.DataFrame({"Symbol":missing,"Data_Quality":"FAIL","Reason":"Upstox historical retrieval unavailable",
                             "Ret_6M":np.nan,"Ret_12M":np.nan,"AnnVol":np.nan})
         research=pd.concat([research,extra],ignore_index=True)
+        
     if len(research)!=expected or research["Symbol"].isna().any() or research["Symbol"].duplicated().any():
         raise RuntimeError("Research universe identity gate failed")
+        
     research.to_csv(staging/"leadership.csv",index=False)
-    # Store recent OHLCV for chart inspection; do not expose provider secrets.
     for name,frame in matrices.items():
         frame.tail(500).to_csv(staging/f"{name}.csv",index_label="Date")
+        
     metadata={
-        "universe":"NIFTY_500","expected":expected,"mapped":len(mapping_ok),
+        "universe":spec.universe_id,"expected":expected,"mapped":len(mapping_ok),
         "retrieved":successful,"retrieval_failures":failures,
         "official_placeholders":placeholders,
         "unresolved_identities":unresolved_identities,
@@ -125,28 +132,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         "certified":False,"breadth":breadth
     }
     (staging/"metadata.json").write_text(json.dumps(metadata,indent=2))
-    # Keep raw provider OHLCV available for diagnostics if validation fails.
-    # This directory is diagnostic-only; never publish it to the trusted snapshot.
-    diagnostic = destination.parent / ("phase2-open-diagnostic" if destination.name == "latest" else destination.name + "-open-diagnostic")
-    diagnostic.mkdir(parents=True, exist_ok=True)
-    for name in ("open.csv", "close.csv", "metadata.json"):
-        shutil.copy2(staging / name, diagnostic / name)
-    opened = matrices["open"].tail(500)
-    closed = matrices["close"].tail(500)
-    missing_open = closed.notna() & opened.isna()
-    missing_close = opened.notna() & closed.isna()
-    rows = []
-    for direction, mask in (("close_without_open", missing_open), ("open_without_close", missing_close)):
-        for session, symbol in zip(*__import__("numpy").where(mask.to_numpy())):
-            rows.append({"direction": direction, "session": str(mask.index[session]),
-                         "symbol": str(mask.columns[symbol]),
-                         "open": opened.iat[session, symbol], "close": closed.iat[session, symbol]})
-    pd.DataFrame(rows, columns=["direction", "session", "symbol", "open", "close"]).to_csv(
-        diagnostic / "open_close_mismatches.csv", index=False)
-    print("PHASE2_OPEN_DIAGNOSTIC:", json.dumps({
-        "close_without_open": int(missing_open.to_numpy().sum()),
-        "open_without_close": int(missing_close.to_numpy().sum()),
-        "sample": rows[:20]}, default=str))
+    
     try:
         validate_snapshot(staging)
         latest = pd.Timestamp(metadata["last_session"]).date()
