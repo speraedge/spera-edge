@@ -11,6 +11,7 @@ from edge_core.portfolio_risk import risk_budget
 from edge_core.leadership_levels import classify_leadership
 from edge_core.relative_strength import cross_sectional_rs
 from edge_core.current_sectors import current_sector_research
+from edge_core.momentum_universe import NIFTY_500, NIFTY_TOTAL_MARKET
 from datetime import date
 from pathlib import Path
 import json
@@ -52,11 +53,19 @@ def cached_symbol_chart(snapshot_identity, symbol, _open_frame, _high, _low, _cl
 
 st.set_page_config(page_title="SPERA EDGE", page_icon="📈", layout="wide")
 st.title("SPERA EDGE")
-st.caption("Independent NIFTY 500 research • Automatic snapshots when available • No brokerage execution")
 
 data_source = st.radio("Data Source", ["Verified EOD", "Provisional Evening"], horizontal=True, key="edge_data_source")
 is_provisional = data_source == "Provisional Evening"
 SNAPSHOT_DIR = Path(__file__).parent / "data" / ("provisional" if is_provisional else "latest")
+
+initial_meta = {}
+try:
+    initial_meta = json.loads((SNAPSHOT_DIR/"metadata.json").read_text())
+except Exception:
+    pass
+active_universe_label = "NIFTY Total Market" if initial_meta.get("universe") == "NIFTY_TOTAL_MARKET" else "NIFTY 500"
+st.caption(f"Independent {active_universe_label} research • Automatic snapshots when available • No brokerage execution")
+
 if is_provisional:
     st.warning("Warning: Provisional data. Do not execute trades based on this. Position Sizing and Journal are locked.")
 def snapshot_identity():
@@ -72,7 +81,12 @@ def snapshot_table(name):
 try:
     validate_snapshot(SNAPSHOT_DIR)
     edge_meta=json.loads((SNAPSHOT_DIR/"metadata.json").read_text())
-    if edge_meta.get("universe")!="NIFTY_500" or edge_meta.get("certified") is not False or not (495 <= int(edge_meta.get("expected",0)) <= 505) or int(edge_meta.get("mapped",0))<495:
+    universe_id = edge_meta.get("universe")
+    if universe_id not in ("NIFTY_500", "NIFTY_TOTAL_MARKET"):
+        raise ValueError("Unexpected snapshot contract")
+    active_spec = NIFTY_TOTAL_MARKET if universe_id == "NIFTY_TOTAL_MARKET" else NIFTY_500
+    
+    if edge_meta.get("certified") is not False or not (active_spec.min_count <= int(edge_meta.get("expected",0)) <= active_spec.max_count) or int(edge_meta.get("mapped",0)) < active_spec.mapped_min_count:
         raise ValueError("Unexpected snapshot contract")
 except (OSError,ValueError,TypeError,KeyError):
     edge_meta=None
@@ -87,7 +101,7 @@ if edge_meta:
             st.info(f"Note: Displaying research data from {last_session.isoformat()}. Execution forms are locked until fresh price data is available.")
     except (ValueError,TypeError,KeyError):
         st.info(f"Note: Displaying research data from {edge_meta.get('last_session', 'unknown session')}. Execution forms are locked until fresh price data is available.")
-    st.caption(f'NIFTY 500 snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
+    st.caption(f'{active_spec.display_name} snapshot: {edge_meta["last_session"]} | Quality: {edge_meta["quality"]} | Research only')
 else:
     st.warning("Automatic NIFTY 500 snapshot not yet published. The market-data pipeline is pending; no manual upload is required.")
 
@@ -315,7 +329,7 @@ elif page == "Leadership Scanner":
         try:
             history_info=json.loads(history_manifest.read_text())
             history_weeks=history_info.get("weeks",[])
-            if history_info.get("universe")!="NIFTY_500" or not history_weeks:
+            if history_info.get("universe") not in ("NIFTY_500", "NIFTY_TOTAL_MARKET") or not history_weeks:
                 raise ValueError("Unexpected history manifest")
             weeks=[row["weekly_key"] for row in history_weeks]
             selected_week=st.selectbox("Historical weekly snapshot",weeks,key="edge_history_week")
