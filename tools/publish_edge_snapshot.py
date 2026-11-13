@@ -58,7 +58,7 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
                           "official_placeholders":placeholders,
                           "unresolved_identities":unresolved_identities},indent=2))
                           
-    if expected-len(missing) < spec.mapped_min_count:
+    if expected-len(missing) < spec.min_count:
         raise RuntimeError(f"{spec.display_name} mapped identity coverage below safe threshold")
         
     mapping_ok=mapping.loc[mapping["Mapping_Status"].eq("MAPPED")]
@@ -82,8 +82,8 @@ def build(outdir="data/latest",token=None,fetcher=fetch_daily_candles,universe=N
         except Exception as exc:
             failures.append({"symbol":symbol,"error":type(exc).__name__})
             
-    if successful < spec.mapped_min_count:
-        raise RuntimeError(f"Only {successful}/{expected} symbols retrieved; minimum safe coverage is {spec.mapped_min_count}")
+    if successful < spec.min_count:
+        raise RuntimeError(f"Only {successful}/{expected} symbols retrieved; minimum safe coverage is {spec.min_count}")
         
     matrices={}
     for name,series in fields.items():
