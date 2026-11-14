@@ -1,11 +1,9 @@
 {
-  "fetched_utc": "2026-11-10T08:45:46.270140+00:00",
-  "membership_source": "https://nsearchives.nseindia.com/content/indices/ind_nifty500list.csv",
-  "membership_sha256": "97ba10e49de1e4e67f4991dc896d4ee44917d7d17f962b0e5d82889852fc1e91",
-  "membership_rows": 501,
-  "benchmark_status": "PROVIDER_HISTORY",
-  "benchmark_name": "NIFTY 500",
-  "benchmark_instrument": "NSE_INDEX|Nifty 500",
-  "benchmark_identity_source": "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz",
-  "benchmark_sha256": "76ca36c4b64c890653e6f022f17042375da9ae7d40885ccb8371bf9d9d8180ab"
+  "universe": "NIFTY_TOTAL_MARKET",
+  "fetched_utc": "2026-11-14T04:59:40.789326+00:00",
+  "membership_source": "https://nsearchives.nseindia.com/content/indices/ind_niftytotalmarket_list.csv",
+  "membership_sha256": "c10f1b6c9917c21ba08a948f8055132953ea5921177c1c3bc94e5b77dcba6ff2",
+  "membership_rows": 753,
+  "benchmark_status": "UNAVAILABLE",
+  "benchmark_error_type": "ValueError"
 }
