@@ -2,8 +2,13 @@
   "universe": "NIFTY_TOTAL_MARKET",
   "expected": 753,
   "mapped": 751,
-  "retrieved": 751,
-  "retrieval_failures": [],
+  "retrieved": 750,
+  "retrieval_failures": [
+    {
+      "symbol": "CIEINDIA",
+      "error": "UpstoxDataError"
+    }
+  ],
   "official_placeholders": [
     {
       "Symbol": "DUMMYHEG",
@@ -16,17 +21,17 @@
   ],
   "unresolved_identities": [],
   "research_pass": 0,
-  "research_review": 714,
-  "research_fail": 39,
+  "research_review": 713,
+  "research_fail": 40,
   "last_session": "2026-11-13",
-  "generated_utc": "2026-11-14T04:59:38.784369+00:00",
+  "generated_utc": "2026-11-14T05:21:12.441072+00:00",
   "source": "Upstox historical candles + official NSE constituent identities",
   "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
   "certified": false,
   "breadth": {
-    "coverage": 751,
-    "eligible_50": 750,
-    "eligible_200": 734,
+    "coverage": 750,
+    "eligible_50": 749,
+    "eligible_200": 733,
     "above_50_pct": 54.3,
     "above_200_pct": 50.3
   }
