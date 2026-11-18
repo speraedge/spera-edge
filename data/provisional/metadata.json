@@ -2,8 +2,17 @@
   "universe": "NIFTY_500",
   "expected": 501,
   "mapped": 500,
-  "retrieved": 500,
-  "retrieval_failures": [],
+  "retrieved": 498,
+  "retrieval_failures": [
+    {
+      "symbol": "AMBUJACEM",
+      "error": "UpstoxDataError"
+    },
+    {
+      "symbol": "BLS",
+      "error": "UpstoxDataError"
+    }
+  ],
   "official_placeholders": [
     {
       "Symbol": "DUMMYHEG",
@@ -14,16 +23,16 @@
   "research_pass": 0,
   "research_review": 483,
   "research_fail": 18,
-  "last_session": "2026-11-17",
-  "generated_utc": "2026-11-17T14:46:33.144019+00:00",
+  "last_session": "2026-11-18",
+  "generated_utc": "2026-11-18T14:43:51.596371+00:00",
   "source": "Upstox historical candles + official NSE constituent identities",
   "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
   "certified": false,
   "breadth": {
-    "coverage": 500,
-    "eligible_50": 500,
-    "eligible_200": 492,
-    "above_50_pct": 57.2,
-    "above_200_pct": 49.8
+    "coverage": 498,
+    "eligible_50": 498,
+    "eligible_200": 490,
+    "above_50_pct": 51.4,
+    "above_200_pct": 48.0
   }
 }
