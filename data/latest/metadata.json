@@ -2,8 +2,13 @@
   "universe": "NIFTY_TOTAL_MARKET",
   "expected": 752,
   "mapped": 750,
-  "retrieved": 750,
-  "retrieval_failures": [],
+  "retrieved": 749,
+  "retrieval_failures": [
+    {
+      "symbol": "ANURAS",
+      "error": "UpstoxDataError"
+    }
+  ],
   "official_placeholders": [
     {
       "Symbol": "DUMMYHEG",
@@ -16,18 +21,18 @@
   ],
   "unresolved_identities": [],
   "research_pass": 0,
-  "research_review": 718,
-  "research_fail": 34,
-  "last_session": "2026-11-20",
-  "generated_utc": "2026-11-21T06:20:15.271163+00:00",
+  "research_review": 717,
+  "research_fail": 35,
+  "last_session": "2026-11-23",
+  "generated_utc": "2026-11-24T04:45:03.507731+00:00",
   "source": "Upstox historical candles + official NSE constituent identities",
   "quality": "REVIEW_UNVERIFIED_CORPORATE_ACTIONS",
   "certified": false,
   "breadth": {
-    "coverage": 750,
-    "eligible_50": 750,
-    "eligible_200": 735,
-    "above_50_pct": 50.4,
-    "above_200_pct": 48.0
+    "coverage": 749,
+    "eligible_50": 749,
+    "eligible_200": 734,
+    "above_50_pct": 46.9,
+    "above_200_pct": 46.6
   }
 }
