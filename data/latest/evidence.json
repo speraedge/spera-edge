@@ -1,8 +1,8 @@
 {
   "universe": "NIFTY_TOTAL_MARKET",
-  "fetched_utc": "2026-11-21T06:20:17.642495+00:00",
+  "fetched_utc": "2026-11-28T08:26:24.317464+00:00",
   "membership_source": "https://nsearchives.nseindia.com/content/indices/ind_niftytotalmarket_list.csv",
-  "membership_sha256": "33e6cb6a9017f8f6456e8d36b90ecd31c825eee048cb0b79c195ee1687c2f027",
+  "membership_sha256": "3e98220b169297aa41f682309189c5d60ace473e7274d0a939f77be3a3a384f6",
   "membership_rows": 752,
   "benchmark_status": "UNAVAILABLE",
   "benchmark_error_type": "ValueError"
